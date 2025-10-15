@@ -9,18 +9,18 @@ title:
 
 [comment]: # "This is the standard layout for the project, but you can clean this and use your own template"
 
-# Project Title
+# Predictive Link Stability and Trust-Aware Routing in FANETs
 
 #### Team
 
-- eNumber, Name, [email](mailto:name@email.com)
-- eNumber, Name, [email](mailto:name@email.com)
-- eNumber, Name, [email](mailto:name@email.com)
+- E/20/035, K.C.H.N.A.W.M.R.C.J.N. Bandara, [email](mailto:e20035@eng.pdn.ac.lk)
+- E/20/173, P.A.S.V. Jayasooriya, [email](mailto:e20173@eng.pdn.ac.lk)
+- E/20/178, N.K.D.P. Jayawardena, [email](mailto:e20178@eng.pdn.ac.lk)
 
 #### Supervisors
 
-- Name, [email](mailto:name@eng.pdn.ac.lk)
-- Name, [email](mailto:name@eng.pdn.ac.lk)
+- Dr.Suneth Namal Karunarathna, [email](mailto:namal@eng.pdn.ac.lk)
+
 
 #### Table of content
 
@@ -68,7 +68,7 @@ This is a sample image, to show how to add images to your page. To learn more op
 
 [//]: # ( NOTE: EDIT THIS LINKS WITH YOUR REPO DETAILS )
 
-- [Project Repository](https://github.com/cepdnaclk/repository-name)
+- [Project Repository](https://github.com/cepdnaclk/e20-4yp-Predictive-Link-Stability-and-Trust-Aware-Routing-in-FANETs)
 - [Project Page](https://cepdnaclk.github.io/repository-name)
 - [Department of Computer Engineering](http://www.ce.pdn.ac.lk/)
 - [University of Peradeniya](https://eng.pdn.ac.lk/)
