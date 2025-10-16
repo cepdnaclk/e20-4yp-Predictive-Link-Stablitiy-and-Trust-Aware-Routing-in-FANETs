@@ -21,13 +21,10 @@
         {
             "name": "Dr. Suneth Namal Karunarathne",
             "email": "namal@eng.pdn.ac.lk"
-        }
-    ],
-    "media": [
+        },
         {
-            "type": "youtube",
-            "title": "",
-            "url": "#"
+            "name": "Supervisor 2",
+            "email": "email@eng.pdn.ac.lk"
         }
     ],
     "tags": ["Final Year Projects"]
