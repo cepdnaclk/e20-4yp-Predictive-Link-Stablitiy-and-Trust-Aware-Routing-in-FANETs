@@ -19,7 +19,8 @@ title:
 
 #### Supervisors
 
-- Dr.Suneth Namal Karunarathna, [email](mailto:namal@eng.pdn.ac.lk)
+- Dr. Suneth Namal Karunarathna, [email](mailto:namal@eng.pdn.ac.lk)
+- Dr. Upul Jayasinghe, [email](mailto:upuljm@eng.pdn.ac.lk)
 
 
 #### Table of content
