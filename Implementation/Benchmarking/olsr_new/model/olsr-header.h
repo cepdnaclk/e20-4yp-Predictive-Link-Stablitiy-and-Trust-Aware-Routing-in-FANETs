@@ -14,6 +14,7 @@
 #include "ns3/header.h"
 #include "ns3/ipv4-address.h"
 #include "ns3/nstime.h"
+#include "ns3/vector.h"
 
 #include <stdint.h>
 #include <vector>
@@ -385,11 +386,44 @@ class MessageHeader : public Header
          * Link message item
          */
         uint8_t hTime; //!< HELLO emission interval (coded)
-        uint8_t willingness;
 
+        // --- P-OLSR FIELDS ---
         float latitude;  // 4 bytes 
         float longitude; // 4 bytes 
         uint16_t altitude; // 2 bytes
+        
+        // Velocity Vector (Required for your GetSpeedWeight logic)
+        float velX;
+        float velY;
+        float velZ;
+        
+        // Flag to tell the system this data is valid
+        bool hasMobilityData = false; 
+
+        // --- Helper Methods called by olsr-routing-protocol.cc ---
+        
+        void SetPosition(Vector pos) {
+            latitude = pos.x;
+            longitude = pos.y;
+            altitude = static_cast<uint16_t>(pos.z);
+            hasMobilityData = true;
+        }
+
+        Vector GetPosition() const {
+            return Vector(latitude, longitude, altitude);
+        }
+
+        void SetVelocity(Vector vel) {
+            velX = vel.x;
+            velY = vel.y;
+            velZ = vel.z;
+            hasMobilityData = true;
+        }
+
+        Vector GetVelocity() const {
+            return Vector(velX, velY, velZ);
+        }
+        // -----------------------
 
         struct LinkMessage
         {
@@ -403,7 +437,7 @@ class MessageHeader : public Header
                 // P-OLSR fields for link quality 
                 uint8_t lq; // Link Quality (phi)
                 uint8_t nlq; // Neighbor Link Quality (rho)
-                uint16_t relativeSpeed; // 2 bytes for averaged relative speed 
+                uint16_t weight; // 2 bytes for averaged relative speed 
             };
             std::vector<Neighbor> neighbors;    
         };
@@ -483,17 +517,18 @@ class MessageHeader : public Header
      */
     struct Tc
     {
-        std::vector<Ipv4Address> neighborAddresses; //!< Neighbor address container.
         uint16_t ansn;                              //!< Advertised Neighbor Sequence Number.
         uint16_t reserved;
 
         struct Neighbor
         {
             Ipv4Address address;
-            // NEW: Added relative speed in TC messages [cite: 126]
-            uint16_t relativeSpeed; 
+            // Added relative speed in TC messages [cite: 126]
+            uint16_t reserved;    // Padding
+            uint16_t weight;      // P-OLSR Weight or Relative Speed
         };
-        std::vector<Neighbor> neighborAddresses;
+        std::vector<Neighbor> neighbors; //!< Neighbor list including weights
+
         /**
          * This method is used to print the content of a Tc message.
          * \param os output stream

@@ -13,6 +13,7 @@
 
 #include "ns3/ipv4-address.h"
 #include "ns3/nstime.h"
+#include "ns3/vector.h"
 
 #include <iostream>
 #include <set>
@@ -109,6 +110,21 @@ struct LinkTuple
     Time asymTime;
     /// Time at which this tuple expires and must be removed.
     Time time;
+
+    // Optional mobility data published in HELLO messages (P-OLSR extension)
+    bool hasMobilityData = false;    //!< Whether mobility info is present for this neighbor
+    Vector neighborPos = Vector(0.0, 0.0, 0.0); //!< Neighbor position (x,y,z)
+    Vector neighborVel = Vector(0.0, 0.0, 0.0); //!< Neighbor velocity (x,y,z)
+    double mobilityWeight = 1.0;    //!< Weight derived from mobility (multiplier for link metric)
+    Time lastMobilityUpdate;        //!< Time when mobility info was last updated
+
+    // Per-neighbor link quality metrics (from HELLO)
+    bool hasLinkMetrics = false;    //!< Whether lq/nlq/weight from HELLO is present
+    uint8_t lq = 0;                 //!< φ (link quality)
+    uint8_t nlq = 0;                //!< ρ (neighbor link quality)
+    uint16_t helloWeight = 0;       //!< Averaged speed weight from HELLO (raw, as received)
+    double etx = 1.0;               //!< Computed ETX for this link
+    Time lastLinkMetricUpdate;      //!< Last time link metrics were updated
 };
 
 inline bool
@@ -122,7 +138,18 @@ operator<<(std::ostream& os, const LinkTuple& tuple)
 {
     os << "LinkTuple(localIfaceAddr=" << tuple.localIfaceAddr
        << ", neighborIfaceAddr=" << tuple.neighborIfaceAddr << ", symTime=" << tuple.symTime
-       << ", asymTime=" << tuple.asymTime << ", expTime=" << tuple.time << ")";
+       << ", asymTime=" << tuple.asymTime << ", expTime=" << tuple.time;
+    if (tuple.hasMobilityData)
+    {
+        os << ", pos=(" << tuple.neighborPos.x << "," << tuple.neighborPos.y << "," << tuple.neighborPos.z
+           << ") vel=(" << tuple.neighborVel.x << "," << tuple.neighborVel.y << "," << tuple.neighborVel.z << ")"
+           << ", mw=" << tuple.mobilityWeight;
+    }
+    if (tuple.hasLinkMetrics)
+    {
+        os << ", lq=" << +tuple.lq << ", nlq=" << +tuple.nlq << ", hw=" << tuple.helloWeight << ", etx=" << tuple.etx;
+    }
+    os << ")";
     return os;
 }
 
@@ -245,6 +272,10 @@ struct TopologyTuple
     uint16_t sequenceNumber;
     /// Time at which this tuple expires and must be removed.
     Time expirationTime;
+
+    // Optional P-OLSR speed weight for the remote link (lastAddr -> destAddr)
+    bool hasSpeedWeight = false; //!< true if speedWeight is valid
+    double speedWeight = 1.0;    //!< weight for remote link (multiplier)
 };
 
 inline bool
@@ -259,7 +290,12 @@ operator<<(std::ostream& os, const TopologyTuple& tuple)
 {
     os << "TopologyTuple(destAddr=" << tuple.destAddr << ", lastAddr=" << tuple.lastAddr
        << ", sequenceNumber=" << (int)tuple.sequenceNumber
-       << ", expirationTime=" << tuple.expirationTime << ")";
+       << ", expirationTime=" << tuple.expirationTime;
+    if (tuple.hasSpeedWeight)
+    {
+        os << ", speedWeight=" << tuple.speedWeight;
+    }
+    os << ")";
     return os;
 }
 

@@ -40,7 +40,7 @@ OlsrState::FindMprSelectorTuple(const Ipv4Address& mainAddr)
 
 // Manage local GPS state
 void
-OlsrState::SetLocalPolsrPosition (float lat, float lon, int16_t alt)
+OlsrState::SetPosition (float lat, float lon, int16_t alt)
 {
   m_latitude = lat;
   m_longitude = lon;
@@ -194,8 +194,6 @@ OlsrState::InsertNeighborTuple(const NeighborTuple& tuple)
         {
             // Update it
             *it = tuple;
-            // Relative Speed
-            it->relativeSpeed = tuple.relativeSpeed;
             return;
         }
     }
@@ -448,8 +446,9 @@ OlsrState::InsertTopologyTuple(const TopologyTuple& tuple)
         {
           // Update standard fields
           *it = tuple;
-          // P-OLSR Extension: Update the relative speed from the TC message
-          it->relativeSpeed = tuple.relativeSpeed;
+          // P-OLSR Extension: Update the speed weight from the TC message
+          it->hasSpeedWeight = tuple.hasSpeedWeight;
+          it->speedWeight = tuple.speedWeight;
           return;
         }
     }

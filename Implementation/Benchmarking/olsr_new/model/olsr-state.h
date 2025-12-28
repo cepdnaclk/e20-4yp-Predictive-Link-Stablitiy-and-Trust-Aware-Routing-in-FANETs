@@ -5,13 +5,14 @@
  * SPDX-License-Identifier: GPL-2.0-only
  *
  * Authors: Francisco J. Ros  <fjrm@dif.um.es>
- *          Gustavo J. A. M. Carneiro <gjc@inescporto.pt>
+ * Gustavo J. A. M. Carneiro <gjc@inescporto.pt>
  */
 
 #ifndef OLSR_STATE_H
 #define OLSR_STATE_H
 
 #include "olsr-repositories.h"
+#include "ns3/vector.h" // <--- CRITICAL FIX: Added for Vector class
 
 namespace ns3
 {
@@ -39,38 +40,44 @@ class OlsrState
     Associations m_associations;     //!< The node's local Host Network Associations that will be
                                      //!< advertised using HNA messages.
 
-    // Own GPS Coordinates (P-OLSR extension)
-    float m_latitude;             // Current latitude (4 bytes)
-    float m_longitude;            // Current longitude (4 bytes)
-    int16_t m_altitude;           // Current altitude (2 bytes)
+    // --- P-OLSR EXTENSION STATE ---
+    // Own GPS Coordinates
+    float m_latitude;             // Current latitude
+    float m_longitude;            // Current longitude
+    int16_t m_altitude;           // Current altitude
+    
+    // Own Velocity Vector (Added this to fix protocol requirements)
+    float m_velX;
+    float m_velY;
+    float m_velZ;
                                      
   public:
     OlsrState()
     {
+        // Initialize to 0
+        m_latitude = 0; m_longitude = 0; m_altitude = 0;
+        m_velX = 0; m_velY = 0; m_velZ = 0;
     }
 
-    // Updates the local node's position (P-OLSR extension)
-    void SetPosition (float lat, float lon, int16_t alt) {
-        m_latitude = lat;
-        m_longitude = lon;
-        m_altitude = alt;
+    // Updates the local node's position and velocity (P-OLSR extension)
+    void SetStateVector (Vector pos, Vector vel) {
+        m_latitude = (float)pos.x;
+        m_longitude = (float)pos.y;
+        m_altitude = (int16_t)pos.z;
+        
+        m_velX = (float)vel.x;
+        m_velY = (float)vel.y;
+        m_velZ = (float)vel.z;
     }
-    // Get the current latitude
-    float GetLatitude () const { return m_latitude; }
-    // Get the current longitude
-    float GetLongitude () const { return m_longitude; }
-    // Get the current altitude
-    int16_t GetAltitude () const { return m_altitude; }
 
-    /**
-    * Helper to compute the relative speed moving average (Eq. 6)
-    * currentDist - Distance at time t_l
-    * prevDist - Distance at time t_{l-1}
-    * deltaT Time - interval (t_l - t_{l-1})
-    * prevAvgSpeed - Previous moving average v_{l-1}
-    * gamma P-OLSR - smoothing parameter
-    */
-    float CalculatePolsrSpeed (float currentDist, float prevDist, Time deltaT, float prevAvgSpeed, float gamma);
+    // Convenience: get the current POS as a Vector
+    Vector GetLocalPolsrPosition () const { return Vector(m_latitude, m_longitude, m_altitude); }
+    
+    // Convenience: get the current VEL as a Vector
+    Vector GetLocalPolsrVelocity () const { return Vector(m_velX, m_velY, m_velZ); }
+
+    // REMOVED: CalculatePolsrSpeed
+    // Reason: We use Vector math in routing-protocol.cc, not scalar distance estimation.
 
     /***********************************************************************************/
 

@@ -1126,10 +1126,11 @@ RoutingProtocol::RoutingTableComputation()
     // If the remote link carries a precomputed P-OLSR weight (from TC), use it; otherwise use default 1.0.
     for (const auto& t : topology)
     {
-        double cost = 1.0; // Default conservative cost for remote links
+        double baseEtx = 1.0; // remote link ETX unknown: assume neutral
+        double cost = baseEtx;
         if (t.hasSpeedWeight)
         {
-            cost = t.speedWeight;
+            cost *= t.speedWeight;
         }
         adj[t.lastAddr].push_back(std::make_pair(t.destAddr, cost));
     }
@@ -1410,16 +1411,11 @@ RoutingProtocol::ProcessTc(const olsr::MessageHeader& msg, const Ipv4Address& se
 
     // 4. For each of the advertised neighbor main address received in
     // the TC message:
-    for (size_t idx = 0; idx < tc.neighborAddresses.size(); ++idx)
+    for (size_t idx = 0; idx < tc.neighbors.size(); ++idx)
     {
-        const Ipv4Address& addr = tc.neighborAddresses[idx];
-        // Extract optional weight if provided in the TC message
-        bool haveWeight = (tc.neighborWeights.size() == tc.neighborAddresses.size());
-        float weight = 1.0f;
-        if (haveWeight)
-        {
-            weight = tc.neighborWeights[idx];
-        }
+        const Ipv4Address& addr = tc.neighbors[idx].address;
+        // Extract weight provided in the TC message (P-OLSR)
+        float weight = static_cast<float>(tc.neighbors[idx].weight);
 
         // 4.1. If there exist some tuple in the topology set where:
         //      T_dest_addr == advertised neighbor main address, AND
@@ -1431,10 +1427,10 @@ RoutingProtocol::ProcessTc(const olsr::MessageHeader& msg, const Ipv4Address& se
         if (topologyTuple != nullptr)
         {
             topologyTuple->expirationTime = now + msg.GetVTime();
-            if (haveWeight)
+            if (tc.neighbors[idx].weight != 0)
             {
                 topologyTuple->hasSpeedWeight = true;
-                topologyTuple->speedWeight = static_cast<double>(weight);
+                topologyTuple->speedWeight = static_cast<double>(weight) / 100.0;
             }
         }
         else
@@ -1450,10 +1446,10 @@ RoutingProtocol::ProcessTc(const olsr::MessageHeader& msg, const Ipv4Address& se
             topologyTuple.lastAddr = msg.GetOriginatorAddress();
             topologyTuple.sequenceNumber = tc.ansn;
             topologyTuple.expirationTime = now + msg.GetVTime();
-            if (haveWeight)
+            if (tc.neighbors[idx].weight != 0)
             {
                 topologyTuple.hasSpeedWeight = true;
-                topologyTuple.speedWeight = static_cast<double>(weight);
+                topologyTuple.speedWeight = static_cast<double>(weight) / 100.0;
             }
             AddTopologyTuple(topologyTuple);
 
@@ -1839,17 +1835,29 @@ RoutingProtocol::SendHello()
 
         olsr::MessageHeader::Hello::LinkMessage linkMessage;
         linkMessage.linkCode = (static_cast<uint8_t>(linkType) & 0x03) |
-                               ((static_cast<uint8_t>(neighborType) << 2) & 0x0f);
-        linkMessage.neighborInterfaceAddresses.push_back(link_tuple->neighborIfaceAddr);
+                            ((static_cast<uint8_t>(neighborType) << 2) & 0x0f);
 
-        std::vector<Ipv4Address> interfaces =
-            m_state.FindNeighborInterfaces(link_tuple->neighborIfaceAddr);
+        // Create neighbor entry with P-OLSR fields
+        olsr::MessageHeader::Hello::LinkMessage::Neighbor neighbor;
+        neighbor.address = link_tuple->neighborIfaceAddr;
+        neighbor.lq = 255;  // Set appropriate link quality
+        neighbor.nlq = 255; // Set appropriate neighbor link quality
+        neighbor.weight = 0; // Calculate from mobility if available
 
-        linkMessage.neighborInterfaceAddresses.insert(linkMessage.neighborInterfaceAddresses.end(),
-                                                      interfaces.begin(),
-                                                      interfaces.end());
+        if (link_tuple->hasMobilityData) {
+            // Calculate weight based on mobility
+            double scaled = link_tuple->mobilityWeight * 100.0;
+            neighbor.weight = static_cast<uint16_t>(std::min(std::max(scaled, 0.0), 65535.0));
+        }
 
-        linkMessages.push_back(linkMessage);
+        linkMessage.neighbors.push_back(neighbor);
+
+        // Add additional interfaces
+        std::vector<Ipv4Address> interfaces = m_state.FindNeighborInterfaces(link_tuple->neighborIfaceAddr);
+        for (const auto& iface : interfaces) {
+            neighbor.address = iface;
+            linkMessage.neighbors.push_back(neighbor);
+        }
     }
     // P-OLSR extension: inject own mobility data into HELLO message when available
     if (m_mobility)
@@ -1885,7 +1893,28 @@ RoutingProtocol::SendTc()
          mprsel_tuple != m_state.GetMprSelectors().end();
          mprsel_tuple++)
     {
-        tc.neighborAddresses.push_back(mprsel_tuple->mainAddr);
+        olsr::MessageHeader::Tc::Neighbor n;
+        n.address = mprsel_tuple->mainAddr;
+        n.reserved = 0;
+        // Best-effort: encode local link mobilityWeight if available
+        uint16_t encWeight = 0;
+        std::vector<Ipv4Address> neighborIfaces = m_state.FindNeighborInterfaces(mprsel_tuple->mainAddr);
+        for (const auto &iface : neighborIfaces)
+        {
+            LinkTuple* lt = m_state.FindLinkTuple(iface);
+            if (lt != nullptr && lt->hasMobilityData)
+            {
+                double scaled = lt->mobilityWeight * 100.0; // scale to uint16
+                if (scaled < 0.0)
+                    scaled = 0.0;
+                if (scaled > 65535.0)
+                    scaled = 65535.0;
+                encWeight = static_cast<uint16_t>(std::round(scaled));
+                break;
+            }
+        }
+        n.weight = encWeight;
+        tc.neighbors.push_back(n);
     }
     QueueMessage(msg, JITTER);
 }
@@ -2105,13 +2134,25 @@ RoutingProtocol::LinkSensing(const olsr::MessageHeader& msg,
             continue;
         }
 
-        for (auto neighIfaceAddr = linkMessage->neighborInterfaceAddresses.begin();
-             neighIfaceAddr != linkMessage->neighborInterfaceAddresses.end();
-             neighIfaceAddr++)
+        for (auto neigh = linkMessage->neighbors.begin(); neigh != linkMessage->neighbors.end(); ++neigh)
         {
-            NS_LOG_DEBUG("   -> Neighbor: " << *neighIfaceAddr);
-            if (*neighIfaceAddr == receiverIface)
+            NS_LOG_DEBUG("   -> Neighbor: " << neigh->address << " (lq=" << +neigh->lq << ", nlq=" << +neigh->nlq << ", w=" << neigh->weight << ")");
+            if (neigh->address == receiverIface)
             {
+                // Store per-neighbor link metrics
+                link_tuple->hasLinkMetrics = true;
+                link_tuple->lq = neigh->lq;
+                link_tuple->nlq = neigh->nlq;
+                link_tuple->helloWeight = neigh->weight;
+                link_tuple->lastLinkMetricUpdate = now;
+                link_tuple->etx = GetEtx(*link_tuple);
+
+                // If no explicit mobility vector is available, use HELLO "weight" as mobility modifier
+                if (!link_tuple->hasMobilityData && neigh->weight != 0)
+                {
+                    link_tuple->mobilityWeight = static_cast<double>(neigh->weight) / 100.0;
+                }
+
                 if (linkType == LinkType::LOST_LINK)
                 {
                     NS_LOG_LOGIC("link is LOST => expiring it");
@@ -2135,7 +2176,7 @@ RoutingProtocol::LinkSensing(const olsr::MessageHeader& msg,
             }
             else
             {
-                NS_LOG_DEBUG("     \\-> *neighIfaceAddr (" << *neighIfaceAddr
+                NS_LOG_DEBUG("     \\-> neigh->address (" << neigh->address
                                                            << " != receiverIface (" << receiverIface
                                                            << ") => IGNORING!");
             }
@@ -2209,13 +2250,11 @@ RoutingProtocol::PopulateTwoHopNeighborSet(const olsr::MessageHeader& msg,
             NS_LOG_DEBUG(
                 "Looking at Link Message from HELLO message: neighborType=" << neighborType);
 
-            for (auto nb2hop_addr_iter = linkMessage->neighborInterfaceAddresses.begin();
-                 nb2hop_addr_iter != linkMessage->neighborInterfaceAddresses.end();
-                 nb2hop_addr_iter++)
+            for (auto nb2hop_iter = linkMessage->neighbors.begin(); nb2hop_iter != linkMessage->neighbors.end(); ++nb2hop_iter)
             {
-                Ipv4Address nb2hop_addr = GetMainAddress(*nb2hop_addr_iter);
+                Ipv4Address nb2hop_addr = GetMainAddress(nb2hop_iter->address);
                 NS_LOG_DEBUG("Looking at 2-hop neighbor address from HELLO message: "
-                             << *nb2hop_addr_iter << " (main address is " << nb2hop_addr << ")");
+                             << nb2hop_iter->address << " (main address is " << nb2hop_addr << ")");
                 if (neighborType == NeighborType::SYM_NEIGH ||
                     neighborType == NeighborType::MPR_NEIGH)
                 {
@@ -2292,14 +2331,12 @@ RoutingProtocol::PopulateMprSelectorSet(const olsr::MessageHeader& msg,
         {
             NS_LOG_DEBUG("Processing a link message with neighbor type MPR_NEIGH");
 
-            for (auto nb_iface_addr = linkMessage->neighborInterfaceAddresses.begin();
-                 nb_iface_addr != linkMessage->neighborInterfaceAddresses.end();
-                 nb_iface_addr++)
+            for (auto nb_iface_iter = linkMessage->neighbors.begin(); nb_iface_iter != linkMessage->neighbors.end(); ++nb_iface_iter)
             {
-                if (GetMainAddress(*nb_iface_addr) == m_mainAddress)
+                if (GetMainAddress(nb_iface_iter->address) == m_mainAddress)
                 {
                     NS_LOG_DEBUG("Adding entry to mpr selector set for neighbor "
-                                 << *nb_iface_addr);
+                                 << nb_iface_iter->address);
 
                     // We must create a new entry into the mpr selector set
                     MprSelectorTuple* existing_mprsel_tuple =

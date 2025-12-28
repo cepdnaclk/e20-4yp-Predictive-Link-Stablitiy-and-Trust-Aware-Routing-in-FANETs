@@ -371,12 +371,18 @@ MessageHeader::Mid::Deserialize(Buffer::Iterator start, uint32_t messageSize)
 uint32_t
 MessageHeader::Hello::GetSerializedSize() const
 {
-    uint32_t size = 4;
-    for (auto iter = this->linkMessages.begin(); iter != this->linkMessages.end(); iter++)
+    // P-OLSR Header Fixed Part:
+    // HTime(1) + Willingness(1) + Alt(2) + Lat(4) + Lon(4) + VelX(4) + VelY(4) + VelZ(4) 
+    // Total = 24 bytes
+    uint32_t size = 24; 
+
+    for (const auto& lm : this->linkMessages)
     {
-        const LinkMessage& lm = *iter;
-        size += 4;
-        size += IPV4_ADDRESS_SIZE * lm.neighborInterfaceAddresses.size();
+        size += 4; // Link Code (1) + Reserved(1) + Message Size (2)
+        
+        // P-OLSR Neighbor Size:
+        // IP(4) + LQ(1) + NLQ(1) + Speed(2) = 8 bytes per neighbor
+        size += 8 * lm.neighbors.size();
     }
     return size;
 }
@@ -385,25 +391,21 @@ void
 MessageHeader::Hello::Print(std::ostream& os) const
 {
     os << " Interval: " << +hTime << " (" << EmfToSeconds(hTime) << "s)";
-    os << " Willingness: " << willingness;
+    os << " Willingness: " << +willingness;
+    // Print Mobility Data
+    os << " Pos:(" << latitude << "," << longitude << "," << altitude << ")";
+    os << " Vel:(" << velX << "," << velY << "," << velZ << ")";
 
-    for (const auto& ilinkMessage : linkMessages)
+    for (const auto& lm : linkMessages)
     {
-        const LinkMessage& lm = ilinkMessage;
         os << " Link code: " << +(lm.linkCode);
         os << " [";
         bool first = true;
-        for (const auto& neigh_iter : lm.neighborInterfaceAddresses)
+        for (const auto& neigh : lm.neighbors)
         {
-            if (first)
-            {
-                first = false;
-            }
-            else
-            {
-                os << ", ";
-            }
-            os << neigh_iter;
+            if (!first) os << ", ";
+            first = false;
+            os << neigh.address << "(Spd:" << neigh.weight << ")";
         }
         os << "]";
     }
@@ -413,25 +415,39 @@ void
 MessageHeader::Hello::Serialize(Buffer::Iterator start) const
 {
     Buffer::Iterator i = start;
-    i.WriteU8(SecondsToEmf(htime)); 
+
+    // 1. Write Header & Mobility Data (24 Bytes)
+    i.WriteU8(SecondsToEmf(hTime)); 
     i.WriteU8(willingness);
-    
-    // NEW: Serialize GPS data [cite: 121, 122]
-    i.Write(reinterpret_cast<const uint8_t*>(&latitude), 4);
-    i.Write(reinterpret_cast<const uint8_t*>(&longitude), 4);
     i.WriteHtonU16(altitude); 
 
+    // Write Floats using temporary float variables to guarantee 4-byte writes
+    float fLat = static_cast<float>(latitude);
+    float fLon = static_cast<float>(longitude);
+    i.Write(reinterpret_cast<const uint8_t*>(&fLat), 4);
+    i.Write(reinterpret_cast<const uint8_t*>(&fLon), 4);
+
+    // Velocity - write as 4-byte floats
+    float fVelX = static_cast<float>(velX);
+    float fVelY = static_cast<float>(velY);
+    float fVelZ = static_cast<float>(velZ);
+    i.Write(reinterpret_cast<const uint8_t*>(&fVelX), 4);
+    i.Write(reinterpret_cast<const uint8_t*>(&fVelY), 4);
+    i.Write(reinterpret_cast<const uint8_t*>(&fVelZ), 4);
+
+    // 2. Write Link Messages
     for (const auto& linkMsg : linkMessages)
     {
         i.WriteU8(linkMsg.linkCode);
         i.WriteU8(0); // Reserved
         i.WriteHtonU16(linkMsg.messageSize);
+
         for (const auto& neigh : linkMsg.neighbors)
         {
-            i.WriteHtonU32(neigh.address.Get());
-            i.WriteU8(neigh.lq);
-            i.WriteU8(neigh.nlq);
-            i.WriteHtonU16(neigh.relativeSpeed); // NEW: Relative speed [cite: 123]
+            i.WriteHtonU32(neigh.address.Get()); // 4 bytes
+            i.WriteU8(neigh.lq);                 // 1 byte
+            i.WriteU8(neigh.nlq);                // 1 byte
+            i.WriteHtonU16(neigh.weight); // 2 bytes
         }
     }
 }
@@ -441,48 +457,72 @@ MessageHeader::Hello::Deserialize(Buffer::Iterator start, uint32_t messageSize)
 {
     Buffer::Iterator i = start;
 
-    NS_ASSERT(messageSize >= 12);
+    NS_ASSERT(messageSize >= 24); // Ensure we have at least the P-OLSR header
 
     this->linkMessages.clear();
+    uint32_t helloSizeLeft = messageSize;
 
-    uint16_t helloSizeLeft = messageSize;
+    // 1. Read Header & Mobility Data
+    this->hTime = i.ReadU8();
+    this->willingness = i.ReadU8();
+    this->altitude = i.ReadNtohU16();
 
-    // 1. Read GPS and Timing Data (The first block)
-    this->altitude = i.ReadNtohU16(); // NEW: 2 bytes
-    this->hTime = i.ReadU8();         // 1 byte
-    this->willingness = i.ReadU8();   // 1 byte (Willingness object/enum)
-    
-    // NEW: Read Latitude (4 bytes)
-    i.Read(reinterpret_cast<uint8_t*>(&this->latitude), 4);
-    // NEW: Read Longitude (4 bytes)
-    i.Read(reinterpret_cast<uint8_t*>(&this->longitude), 4);
+    // Read 4-byte float fields into temporaries to avoid any ambiguity
+    float fLat = 0.0f, fLon = 0.0f, fVelX = 0.0f, fVelY = 0.0f, fVelZ = 0.0f;
+    i.Read(reinterpret_cast<uint8_t*>(&fLat), 4);
+    i.Read(reinterpret_cast<uint8_t*>(&fLon), 4);
+    i.Read(reinterpret_cast<uint8_t*>(&fVelX), 4);
+    i.Read(reinterpret_cast<uint8_t*>(&fVelY), 4);
+    i.Read(reinterpret_cast<uint8_t*>(&fVelZ), 4);
 
-    helloSizeLeft -= 12; // Adjusted for the 12 bytes read above
+    // Assign back to members (promote to double if member types change in the future)
+    this->latitude = fLat;
+    this->longitude = fLon;
+    this->velX = fVelX;
+    this->velY = fVelY;
+    this->velZ = fVelZ;
 
-    // 2. Read Link Messages (Neighbor Information)
+    this->hasMobilityData = true; // Flag for RoutingProtocol
+    helloSizeLeft -= 24;
+
+    // 2. Read Link Messages
     while (helloSizeLeft > 0)
     {
         LinkMessage lm;
         lm.linkCode = i.ReadU8();
-        i.ReadU8(); // Reserved byte
-        uint16_t lmSize = i.ReadNtohU16();
-        
-        // P-OLSR neighbor entries are 8 bytes: 
-        // 4 (IP) + 1 (LQ) + 1 (NLQ) + 2 (Speed) = 8 bytes
-        NS_ASSERT((lmSize - 4) % 8 == 0); 
-        
-        for (int n = (lmSize - 4) / 8; n > 0; --n)
+        i.ReadU8(); // Reserved
+        lm.messageSize = i.ReadNtohU16();
+
+        // Safety checks: message size must be at least 4 (header) and cannot exceed remaining hello bytes
+        if (lm.messageSize < 4 || lm.messageSize > helloSizeLeft)
         {
-            Neighbor neigh;
+            NS_LOG_WARN("Malformed LinkMessage size: " << lm.messageSize << " (helloSizeLeft=" << helloSizeLeft << "), aborting Hello parsing.");
+            break;
+        }
+
+        // Calculate number of neighbors (Size - 4 header bytes) / 8 bytes per neighbor
+        uint32_t neighborDataSize = lm.messageSize - 4;
+        if (neighborDataSize % 8 != 0)
+        {
+            NS_LOG_WARN("LinkMessage neighbor data size not multiple of 8: " << neighborDataSize << ", aborting Hello parsing.");
+            break;
+        }
+
+        int numNeighbors = neighborDataSize / 8;
+
+        for (int n = 0; n < numNeighbors; ++n)
+        {
+            LinkMessage::Neighbor neigh;
             neigh.address = Ipv4Address(i.ReadNtohU32());
-            neigh.lq = i.ReadU8();           // NEW: Link Quality
-            neigh.nlq = i.ReadU8();          // NEW: Neighbor Link Quality
-            neigh.relativeSpeed = i.ReadNtohU16(); // NEW: Relative Speed
+            neigh.lq = i.ReadU8();
+            neigh.nlq = i.ReadU8();
+            neigh.weight = i.ReadNtohU16();
             lm.neighbors.push_back(neigh);
         }
-        
-        helloSizeLeft -= lmSize;
+
         this->linkMessages.push_back(lm);
+
+        helloSizeLeft -= lm.messageSize;
     }
 
     return messageSize;
@@ -493,7 +533,11 @@ MessageHeader::Hello::Deserialize(Buffer::Iterator start, uint32_t messageSize)
 uint32_t
 MessageHeader::Tc::GetSerializedSize() const
 {
-    return 4 + this->neighborAddresses.size() * IPV4_ADDRESS_SIZE;
+    // Fixed Header: ANSN(2) + Reserved(2) = 4 bytes
+    // Per Neighbor: Address(4) + Reserved(2) + Weight(2) = 8 bytes
+    // Note: We use 'neighbors.size()', not 'neighborAddresses.size()' 
+    // because we changed the vector name in the .h file to hold structs.
+    return 4 + this->neighbors.size() * 8;
 }
 
 void
@@ -502,7 +546,7 @@ MessageHeader::Tc::Print(std::ostream& os) const
     os << " Adv. SeqNo: " << ansn;
     os << " [";
     bool first = true;
-    for (const auto& iAddr : neighborAddresses)
+    for (const auto& neigh : neighbors)
     {
         if (first)
         {
@@ -512,7 +556,7 @@ MessageHeader::Tc::Print(std::ostream& os) const
         {
             os << ", ";
         }
-        os << iAddr;
+        os << neigh.address << "(Wt:" << neigh.weight << ")";
     }
     os << "]";
 }
@@ -525,9 +569,11 @@ MessageHeader::Tc::Serialize(Buffer::Iterator start) const
     i.WriteHtonU16(this->ansn);
     i.WriteHtonU16(0); // Reserved
 
-    for (auto iter = this->neighborAddresses.begin(); iter != this->neighborAddresses.end(); iter++)
+    for (const auto& neigh : this->neighbors)
     {
-        i.WriteHtonU32(iter->Get());
+        i.WriteHtonU32(neigh.address.Get()); // 4 bytes IP
+        i.WriteHtonU16(0);                   // 2 bytes Reserved
+        i.WriteHtonU16(neigh.weight);        // 2 bytes P-OLSR Weight
     }
 }
 
@@ -536,18 +582,28 @@ MessageHeader::Tc::Deserialize(Buffer::Iterator start, uint32_t messageSize)
 {
     Buffer::Iterator i = start;
 
-    this->neighborAddresses.clear();
+    this->neighbors.clear();
     NS_ASSERT(messageSize >= 4);
 
     this->ansn = i.ReadNtohU16();
     i.ReadNtohU16(); // Reserved
 
-    NS_ASSERT((messageSize - 4) % IPV4_ADDRESS_SIZE == 0);
-    int numAddresses = (messageSize - 4) / IPV4_ADDRESS_SIZE;
-    this->neighborAddresses.clear();
-    for (int n = 0; n < numAddresses; ++n)
+    // Calculate data size: Total Size - 4 bytes (header)
+    uint32_t dataSize = messageSize - 4;
+
+    // Safety check: The remaining bytes must be a multiple of 8 (Addr+Res+Wt)
+    // If this fails, it means we received a standard OLSR packet, not P-OLSR.
+    NS_ASSERT_MSG(dataSize % 8 == 0, "TC Message size mismatch! Expected P-OLSR format (8 bytes/neighbor).");
+    
+    int numNeighbors = dataSize / 8;
+    
+    for (int n = 0; n < numNeighbors; ++n)
     {
-        this->neighborAddresses.emplace_back(i.ReadNtohU32());
+        Neighbor neigh;
+        neigh.address = Ipv4Address(i.ReadNtohU32()); // Read IP
+        i.ReadNtohU16();                              // Read Reserved
+        neigh.weight = i.ReadNtohU16();               // Read Weight
+        this->neighbors.push_back(neigh);
     }
 
     return messageSize;
