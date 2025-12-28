@@ -39,10 +39,40 @@ class OlsrState
     Associations m_associations;     //!< The node's local Host Network Associations that will be
                                      //!< advertised using HNA messages.
 
+    // Own GPS Coordinates (P-OLSR extension)
+    float m_latitude;             // Current latitude (4 bytes)
+    float m_longitude;            // Current longitude (4 bytes)
+    int16_t m_altitude;           // Current altitude (2 bytes)
+                                     
   public:
     OlsrState()
     {
     }
+
+    // Updates the local node's position (P-OLSR extension)
+    void SetPosition (float lat, float lon, int16_t alt) {
+        m_latitude = lat;
+        m_longitude = lon;
+        m_altitude = alt;
+    }
+    // Get the current latitude
+    float GetLatitude () const { return m_latitude; }
+    // Get the current longitude
+    float GetLongitude () const { return m_longitude; }
+    // Get the current altitude
+    int16_t GetAltitude () const { return m_altitude; }
+
+    /**
+    * Helper to compute the relative speed moving average (Eq. 6)
+    * currentDist - Distance at time t_l
+    * prevDist - Distance at time t_{l-1}
+    * deltaT Time - interval (t_l - t_{l-1})
+    * prevAvgSpeed - Previous moving average v_{l-1}
+    * gamma P-OLSR - smoothing parameter
+    */
+    float CalculatePolsrSpeed (float currentDist, float prevDist, Time deltaT, float prevAvgSpeed, float gamma);
+
+    /***********************************************************************************/
 
     // MPR selector
 

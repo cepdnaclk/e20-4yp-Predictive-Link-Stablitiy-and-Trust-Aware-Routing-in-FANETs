@@ -40,9 +40,17 @@
 #include "ns3/trace-source-accessor.h"
 #include "ns3/udp-socket-factory.h"
 #include "ns3/uinteger.h"
+#include "ns3/vector.h"
 
 #include <iomanip>
 #include <iostream>
+#include <cmath>
+#include <queue>
+#include <limits>
+#include <map>
+#include <set>
+#include <utility>
+#include <functional>
 
 /********** Useful macros **********/
 
@@ -450,6 +458,12 @@ RoutingProtocol::DoInitialize()
 
         NS_LOG_DEBUG("OLSR on node " << m_mainAddress << " started");
     }
+    
+    // Retrieve the MobilityModel for this node
+    m_mobility = GetObject<MobilityModel>();
+    if (!m_mobility) {
+        NS_LOG_WARN("P-OLSR: MobilityModel not found on node, routing may be degraded.");
+    }
 }
 
 void
@@ -663,6 +677,52 @@ RoutingProtocol::Degree(const NeighborTuple& tuple)
         }
     }
     return degree;
+}
+
+
+// Helper to calculate P-OLSR link weight
+// Returns a multiplier (< 1 for approaching, > 1 for moving away)
+
+double
+RoutingProtocol::GetSpeedWeight(Vector myVel, Vector myPos, Vector neighVel, Vector neighPos)
+{
+    // Calculate relative vectors
+    Vector relVel = neighVel - myVel;
+    Vector relPos = neighPos - myPos;
+
+    double dist = std::sqrt(relPos.x * relPos.x + relPos.y * relPos.y + relPos.z * relPos.z);
+    if (dist < 1e-6)
+    {
+        return 1.0; // same position -> neutral
+    }
+
+    // Project relative velocity on direction to neighbor (positive => moving away)
+    double closingSpeed = (relVel.x * relPos.x + relVel.y * relPos.y + relVel.z * relPos.z) / dist;
+
+    // Sigmoid / exponential mapping as suggested: weight = alpha ^ (closingSpeed)
+    const double alpha = 1.1; // tuning parameter
+    double w = std::pow(alpha, closingSpeed);
+
+    // Keep weight within reasonable bounds
+    if (w < 0.1)
+    {
+        w = 0.1;
+    }
+    if (w > 100.0)
+    {
+        w = 100.0;
+    }
+    return w;
+}
+
+// Placeholder ETX computation. If link quality metrics are available, compute
+// ETX here. For now, return 1.0 to represent a nominal link cost.
+double
+RoutingProtocol::GetEtx(const LinkTuple& link) const
+{
+    NS_LOG_DEBUG("GetEtx called for link: " << link);
+    (void)link; // suppress unused parameter warning until implemented
+    return 1.0;
 }
 
 namespace
@@ -1006,218 +1066,150 @@ RoutingProtocol::RoutingTableComputation()
     // 1. All the entries from the routing table are removed.
     Clear();
 
-    // 2. The new routing entries are added starting with the
-    // symmetric neighbors (h=1) as the destination nodes.
-    const NeighborSet& neighborSet = m_state.GetNeighbors();
-    for (auto it = neighborSet.begin(); it != neighborSet.end(); it++)
-    {
-        const NeighborTuple& nb_tuple = *it;
-        NS_LOG_DEBUG("Looking at neighbor tuple: " << nb_tuple);
-        if (nb_tuple.status == NeighborTuple::STATUS_SYM)
-        {
-            bool nb_main_addr = false;
-            const LinkTuple* lt = nullptr;
-            const LinkSet& linkSet = m_state.GetLinks();
-            for (auto it2 = linkSet.begin(); it2 != linkSet.end(); it2++)
-            {
-                const LinkTuple& link_tuple = *it2;
-                NS_LOG_DEBUG("Looking at link tuple: "
-                             << link_tuple
-                             << (link_tuple.time >= Simulator::Now() ? "" : " (expired)"));
-                if ((GetMainAddress(link_tuple.neighborIfaceAddr) == nb_tuple.neighborMainAddr) &&
-                    link_tuple.time >= Simulator::Now())
-                {
-                    NS_LOG_LOGIC("Link tuple matches neighbor "
-                                 << nb_tuple.neighborMainAddr
-                                 << " => adding routing table entry to neighbor");
-                    lt = &link_tuple;
-                    AddEntry(link_tuple.neighborIfaceAddr,
-                             link_tuple.neighborIfaceAddr,
-                             link_tuple.localIfaceAddr,
-                             1);
-                    if (link_tuple.neighborIfaceAddr == nb_tuple.neighborMainAddr)
-                    {
-                        nb_main_addr = true;
-                    }
-                }
-                else
-                {
-                    NS_LOG_LOGIC("Link tuple: linkMainAddress= "
-                                 << GetMainAddress(link_tuple.neighborIfaceAddr)
-                                 << "; neighborMainAddr =  " << nb_tuple.neighborMainAddr
-                                 << "; expired=" << int(link_tuple.time < Simulator::Now())
-                                 << " => IGNORE");
-                }
-            }
+    // --- P-OLSR: mobility-weighted shortest paths (Dijkstra) ---
+    Time now = Simulator::Now();
 
-            // If, in the above, no R_dest_addr is equal to the main
-            // address of the neighbor, then another new routing entry
-            // with MUST be added, with:
-            //      R_dest_addr  = main address of the neighbor;
-            //      R_next_addr  = L_neighbor_iface_addr of one of the
-            //                     associated link tuple with L_time >= current time;
-            //      R_dist       = 1;
-            //      R_iface_addr = L_local_iface_addr of the
-            //                     associated link tuple.
-            if (!nb_main_addr && lt != nullptr)
-            {
-                NS_LOG_LOGIC("no R_dest_addr is equal to the main address of the neighbor "
-                             "=> adding additional routing entry");
-                AddEntry(nb_tuple.neighborMainAddr, lt->neighborIfaceAddr, lt->localIfaceAddr, 1);
-            }
+    // Build node set from links and topology
+    std::set<Ipv4Address> nodes;
+    nodes.insert(m_mainAddress);
+
+    const LinkSet& allLinks = m_state.GetLinks();
+    for (const auto& link : allLinks)
+    {
+        if (link.time >= now && GetMainAddress(link.localIfaceAddr) == m_mainAddress)
+        {
+            nodes.insert(GetMainAddress(link.neighborIfaceAddr));
         }
     }
 
-    //  3. for each node in N2, i.e., a 2-hop neighbor which is not a
-    //  neighbor node or the node itself, and such that there exist at
-    //  least one entry in the 2-hop neighbor set where
-    //  N_neighbor_main_addr correspond to a neighbor node with
-    //  willingness different of Willingness::NEVER,
-    const TwoHopNeighborSet& twoHopNeighbors = m_state.GetTwoHopNeighbors();
-    for (auto it = twoHopNeighbors.begin(); it != twoHopNeighbors.end(); it++)
+    const TopologySet& topology = m_state.GetTopologySet();
+    for (const auto& t : topology)
     {
-        const TwoHopNeighborTuple& nb2hop_tuple = *it;
-
-        NS_LOG_LOGIC("Looking at two-hop neighbor tuple: " << nb2hop_tuple);
-
-        // a 2-hop neighbor which is not a neighbor node or the node itself
-        if (m_state.FindSymNeighborTuple(nb2hop_tuple.twoHopNeighborAddr))
-        {
-            NS_LOG_LOGIC("Two-hop neighbor tuple is also neighbor; skipped.");
-            continue;
-        }
-
-        if (nb2hop_tuple.twoHopNeighborAddr == m_mainAddress)
-        {
-            NS_LOG_LOGIC("Two-hop neighbor is self; skipped.");
-            continue;
-        }
-
-        // ...and such that there exist at least one entry in the 2-hop
-        // neighbor set where N_neighbor_main_addr correspond to a
-        // neighbor node with willingness different of Willingness::NEVER...
-        bool nb2hopOk = false;
-        for (auto neighbor = neighborSet.begin(); neighbor != neighborSet.end(); neighbor++)
-        {
-            if (neighbor->neighborMainAddr == nb2hop_tuple.neighborMainAddr &&
-                neighbor->willingness != Willingness::NEVER)
-            {
-                nb2hopOk = true;
-                break;
-            }
-        }
-        if (!nb2hopOk)
-        {
-            NS_LOG_LOGIC("Two-hop neighbor tuple skipped: 2-hop neighbor "
-                         << nb2hop_tuple.twoHopNeighborAddr << " is attached to neighbor "
-                         << nb2hop_tuple.neighborMainAddr
-                         << ", which was not found in the Neighbor Set.");
-            continue;
-        }
-
-        // one selects one 2-hop tuple and creates one entry in the routing table with:
-        //                R_dest_addr  =  the main address of the 2-hop neighbor;
-        //                R_next_addr  = the R_next_addr of the entry in the
-        //                               routing table with:
-        //                                   R_dest_addr == N_neighbor_main_addr
-        //                                                  of the 2-hop tuple;
-        //                R_dist       = 2;
-        //                R_iface_addr = the R_iface_addr of the entry in the
-        //                               routing table with:
-        //                                   R_dest_addr == N_neighbor_main_addr
-        //                                                  of the 2-hop tuple;
-        RoutingTableEntry entry;
-        bool foundEntry = Lookup(nb2hop_tuple.neighborMainAddr, entry);
-        if (foundEntry)
-        {
-            NS_LOG_LOGIC("Adding routing entry for two-hop neighbor.");
-            AddEntry(nb2hop_tuple.twoHopNeighborAddr, entry.nextAddr, entry.interface, 2);
-        }
-        else
-        {
-            NS_LOG_LOGIC("NOT adding routing entry for two-hop neighbor ("
-                         << nb2hop_tuple.twoHopNeighborAddr << " not found in the routing table)");
-        }
+        nodes.insert(t.lastAddr);
+        nodes.insert(t.destAddr);
     }
 
-    for (uint32_t h = 2;; h++)
+    // adjacency list: addr -> vector of (neighbor, cost)
+    std::map<Ipv4Address, std::vector<std::pair<Ipv4Address, double>>> adj;
+
+    // direct links
+    for (const auto& link : allLinks)
     {
-        bool added = false;
+        if (link.time < now)
+            continue;
+        if (GetMainAddress(link.localIfaceAddr) != m_mainAddress)
+            continue;
 
-        // 3.1. For each topology entry in the topology table, if its
-        // T_dest_addr does not correspond to R_dest_addr of any
-        // route entry in the routing table AND its T_last_addr
-        // corresponds to R_dest_addr of a route entry whose R_dist
-        // is equal to h, then a new route entry MUST be recorded in
-        // the routing table (if it does not already exist)
-        const TopologySet& topology = m_state.GetTopologySet();
-        for (auto it = topology.begin(); it != topology.end(); it++)
+        Ipv4Address neigh = GetMainAddress(link.neighborIfaceAddr);
+        double baseEtx = GetEtx(link);
+        // Explicit speed-based modifier (default neutral = 1.0)
+        double modifier = 1.0;
+        if (link.hasMobilityData)
         {
-            const TopologyTuple& topology_tuple = *it;
-            NS_LOG_LOGIC("Looking at topology tuple: " << topology_tuple);
-
-            RoutingTableEntry destAddrEntry;
-            RoutingTableEntry lastAddrEntry;
-            bool have_destAddrEntry = Lookup(topology_tuple.destAddr, destAddrEntry);
-            bool have_lastAddrEntry = Lookup(topology_tuple.lastAddr, lastAddrEntry);
-            if (!have_destAddrEntry && have_lastAddrEntry && lastAddrEntry.distance == h)
+            if (m_mobility)
             {
-                NS_LOG_LOGIC("Adding routing table entry based on the topology tuple.");
-                // then a new route entry MUST be recorded in
-                //                the routing table (if it does not already exist) where:
-                //                     R_dest_addr  = T_dest_addr;
-                //                     R_next_addr  = R_next_addr of the recorded
-                //                                    route entry where:
-                //                                    R_dest_addr == T_last_addr
-                //                     R_dist       = h+1; and
-                //                     R_iface_addr = R_iface_addr of the recorded
-                //                                    route entry where:
-                //                                       R_dest_addr == T_last_addr.
-                AddEntry(topology_tuple.destAddr,
-                         lastAddrEntry.nextAddr,
-                         lastAddrEntry.interface,
-                         h + 1);
-                added = true;
+                modifier = GetSpeedWeight(m_mobility->GetVelocity(), m_mobility->GetPosition(),
+                                          link.neighborVel, link.neighborPos);
             }
             else
             {
-                NS_LOG_LOGIC("NOT adding routing table entry based on the topology tuple: "
-                             "have_destAddrEntry="
-                             << have_destAddrEntry << " have_lastAddrEntry=" << have_lastAddrEntry
-                             << " lastAddrEntry.distance=" << (int)lastAddrEntry.distance
-                             << " (h=" << h << ")");
+                // No local mobility model available; fall back to using neighbor data only
+                modifier = GetSpeedWeight(Vector(), Vector(), link.neighborVel, link.neighborPos);
             }
         }
+        double cost = baseEtx * modifier;    // final per-edge cost uses ETX scaled by mobility modifier
+        adj[m_mainAddress].push_back(std::make_pair(neigh, cost));
+    }
 
-        if (!added)
+    // topology edges (lastAddr -> destAddr)
+    // These represent remote links (A -> B) reported via TC messages.
+    // If the remote link carries a precomputed P-OLSR weight (from TC), use it; otherwise use default 1.0.
+    for (const auto& t : topology)
+    {
+        double cost = 1.0; // Default conservative cost for remote links
+        if (t.hasSpeedWeight)
         {
-            break;
+            cost = t.speedWeight;
+        }
+        adj[t.lastAddr].push_back(std::make_pair(t.destAddr, cost));
+    }
+
+    // Dijkstra
+    const double INF = std::numeric_limits<double>::infinity();
+    std::map<Ipv4Address, double> dist;
+    std::map<Ipv4Address, Ipv4Address> firstHop;
+    std::map<Ipv4Address, int> hops;
+
+    for (const auto& n : nodes)
+    {
+        dist[n] = INF;
+        firstHop[n] = Ipv4Address();
+        hops[n] = 0;
+    }
+    dist[m_mainAddress] = 0.0;
+    firstHop[m_mainAddress] = m_mainAddress;
+
+    typedef std::pair<double, Ipv4Address> PQItem;
+    std::priority_queue<PQItem, std::vector<PQItem>, std::greater<PQItem>> pq;
+    pq.push(std::make_pair(0.0, m_mainAddress));
+
+    while (!pq.empty())
+    {
+        auto top = pq.top();
+        pq.pop();
+        double d = top.first;
+        Ipv4Address u = top.second;
+        if (d != dist[u])
+            continue;
+        auto itAdj = adj.find(u);
+        if (itAdj == adj.end())
+            continue;
+        for (const auto& edge : itAdj->second)
+        {
+            Ipv4Address v = edge.first;
+            double w = edge.second;
+            if (dist[v] > dist[u] + w)
+            {
+                dist[v] = dist[u] + w;
+                if (u == m_mainAddress)
+                {
+                    firstHop[v] = v;
+                    hops[v] = 1;
+                }
+                else
+                {
+                    firstHop[v] = firstHop[u];
+                    hops[v] = hops[u] + 1;
+                }
+                pq.push(std::make_pair(dist[v], v));
+            }
         }
     }
 
-    // 4. For each entry in the multiple interface association base
-    // where there exists a routing entry such that:
-    // R_dest_addr == I_main_addr (of the multiple interface association entry)
-    // AND there is no routing entry such that:
-    // R_dest_addr == I_iface_addr
-    const IfaceAssocSet& ifaceAssocSet = m_state.GetIfaceAssocSet();
-    for (auto it = ifaceAssocSet.begin(); it != ifaceAssocSet.end(); it++)
+    // Build routing table entries from Dijkstra results
+    for (const auto& pair : dist)
     {
-        const IfaceAssocTuple& tuple = *it;
-        RoutingTableEntry entry1;
-        RoutingTableEntry entry2;
-        bool have_entry1 = Lookup(tuple.mainAddr, entry1);
-        bool have_entry2 = Lookup(tuple.ifaceAddr, entry2);
-        if (have_entry1 && !have_entry2)
+        const Ipv4Address& dest = pair.first;
+        double d = pair.second;
+        if (dest == m_mainAddress || d == INF)
+            continue;
+
+        Ipv4Address next = firstHop[dest];
+        uint32_t iface = 0;
+        uint32_t hopCount = hops[dest] > 0 ? (uint32_t)hops[dest] : 1;
+
+        for (const auto& link : allLinks)
         {
-            // then a route entry is created in the routing table with:
-            //       R_dest_addr  =  I_iface_addr (of the multiple interface
-            //                                     association entry)
-            //       R_next_addr  =  R_next_addr  (of the recorded route entry)
-            //       R_dist       =  R_dist       (of the recorded route entry)
-            //       R_iface_addr =  R_iface_addr (of the recorded route entry).
-            AddEntry(tuple.ifaceAddr, entry1.nextAddr, entry1.interface, entry1.distance);
+            if (link.time >= now && GetMainAddress(link.neighborIfaceAddr) == next &&
+                GetMainAddress(link.localIfaceAddr) == m_mainAddress)
+            {
+                iface = m_ipv4->GetInterfaceForAddress(link.localIfaceAddr);
+                break;
+            }
         }
+
+        AddEntry(dest, next, iface, hopCount);
+        m_table[dest].metric = d;
     }
 
     // 5. For each tuple in the association set,
@@ -1340,6 +1332,33 @@ RoutingProtocol::ProcessHello(const olsr::MessageHeader& msg,
     PopulateNeighborSet(msg, hello);
     PopulateTwoHopNeighborSet(msg, hello);
 
+    // P-OLSR: extract neighbor mobility data from HELLO (if present) and update link tuple
+    if (hello.hasMobilityData)
+    {
+        Vector neighPos = hello.GetPosition();
+        Vector neighVel = hello.GetVelocity();
+        LinkTuple* linkTuple = m_state.FindLinkTuple(senderIface);
+        if (linkTuple != nullptr)
+        {
+            linkTuple->neighborPos = neighPos;
+            linkTuple->neighborVel = neighVel;
+            linkTuple->hasMobilityData = true;
+            linkTuple->lastMobilityUpdate = Simulator::Now();
+            // compute mobility weight based on relative movement (helper in this class)
+            Vector myPos(0.0, 0.0, 0.0);
+            Vector myVel(0.0, 0.0, 0.0);
+            if (m_mobility)
+            {
+                myPos = m_mobility->GetPosition();
+                myVel = m_mobility->GetVelocity();
+            }
+            double mw = GetSpeedWeight(myVel, myPos, neighVel, neighPos);
+            linkTuple->mobilityWeight = mw;
+            NS_LOG_DEBUG("P-OLSR: Received mobility from " << senderIface << " pos=" << neighPos
+                         << " vel=" << neighVel << " weight=" << mw);
+        }
+    }
+
 #ifdef NS3_LOG_ENABLE
     {
         const TwoHopNeighborSet& twoHopNeighbors = m_state.GetTwoHopNeighbors();
@@ -1391,9 +1410,17 @@ RoutingProtocol::ProcessTc(const olsr::MessageHeader& msg, const Ipv4Address& se
 
     // 4. For each of the advertised neighbor main address received in
     // the TC message:
-    for (auto i = tc.neighborAddresses.begin(); i != tc.neighborAddresses.end(); i++)
+    for (size_t idx = 0; idx < tc.neighborAddresses.size(); ++idx)
     {
-        const Ipv4Address& addr = *i;
+        const Ipv4Address& addr = tc.neighborAddresses[idx];
+        // Extract optional weight if provided in the TC message
+        bool haveWeight = (tc.neighborWeights.size() == tc.neighborAddresses.size());
+        float weight = 1.0f;
+        if (haveWeight)
+        {
+            weight = tc.neighborWeights[idx];
+        }
+
         // 4.1. If there exist some tuple in the topology set where:
         //      T_dest_addr == advertised neighbor main address, AND
         //      T_last_addr == originator address,
@@ -1404,6 +1431,11 @@ RoutingProtocol::ProcessTc(const olsr::MessageHeader& msg, const Ipv4Address& se
         if (topologyTuple != nullptr)
         {
             topologyTuple->expirationTime = now + msg.GetVTime();
+            if (haveWeight)
+            {
+                topologyTuple->hasSpeedWeight = true;
+                topologyTuple->speedWeight = static_cast<double>(weight);
+            }
         }
         else
         {
@@ -1418,6 +1450,11 @@ RoutingProtocol::ProcessTc(const olsr::MessageHeader& msg, const Ipv4Address& se
             topologyTuple.lastAddr = msg.GetOriginatorAddress();
             topologyTuple.sequenceNumber = tc.ansn;
             topologyTuple.expirationTime = now + msg.GetVTime();
+            if (haveWeight)
+            {
+                topologyTuple.hasSpeedWeight = true;
+                topologyTuple.speedWeight = static_cast<double>(weight);
+            }
             AddTopologyTuple(topologyTuple);
 
             // Schedules topology tuple deletion
@@ -1814,6 +1851,15 @@ RoutingProtocol::SendHello()
 
         linkMessages.push_back(linkMessage);
     }
+    // P-OLSR extension: inject own mobility data into HELLO message when available
+    if (m_mobility)
+    {
+        Vector pos = m_mobility->GetPosition();
+        Vector vel = m_mobility->GetVelocity();
+        hello.SetPosition(pos);
+        hello.SetVelocity(vel);
+    }
+
     NS_LOG_DEBUG("OLSR HELLO message size: " << int(msg.GetSerializedSize()) << " (with "
                                              << int(linkMessages.size()) << " link messages)");
     QueueMessage(msg, JITTER);

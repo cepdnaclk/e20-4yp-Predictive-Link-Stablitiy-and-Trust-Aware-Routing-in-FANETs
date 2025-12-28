@@ -27,7 +27,9 @@
 #include "ns3/test.h"
 #include "ns3/timer.h"
 #include "ns3/traced-callback.h"
+#include "ns3/mobility-model.h"
 
+#include <limits>
 #include <map>
 #include <vector>
 
@@ -52,13 +54,15 @@ struct RoutingTableEntry
     Ipv4Address nextAddr; //!< Address of the next hop.
     uint32_t interface;   //!< Interface index
     uint32_t distance;    //!< Distance in hops to the destination.
+    double metric;        //!< Weighted routing metric (P-OLSR mobility-weighted cost)
 
     RoutingTableEntry()
         : // default values
           destAddr(),
           nextAddr(),
           interface(0),
-          distance(0)
+          distance(0),
+          metric(std::numeric_limits<double>::infinity())
     {
     }
 };
@@ -826,6 +830,16 @@ class RoutingProtocol : public Ipv4RoutingProtocol
 
     /// Provides uniform random variables.
     Ptr<UniformRandomVariable> m_uniformRandomVariable;
+
+  public:
+    // Helper to calculate P-OLSR link weight
+    // Returns a multiplier (< 1 for approaching, > 1 for moving away)
+    double GetSpeedWeight(Vector myVel, Vector myPos, Vector neighVel, Vector neighPos);
+
+  private:    // Compute ETX / base cost for a given LinkTuple (placeholder: returns 1.0 by default)
+    double GetEtx(const LinkTuple& link) const;
+      // Pointer to the node's mobility model
+      Ptr<MobilityModel> m_mobility;
 };
 
 } // namespace olsr
