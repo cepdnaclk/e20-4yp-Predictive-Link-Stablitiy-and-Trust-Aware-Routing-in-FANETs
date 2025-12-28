@@ -413,29 +413,25 @@ void
 MessageHeader::Hello::Serialize(Buffer::Iterator start) const
 {
     Buffer::Iterator i = start;
+    i.WriteU8(SecondsToEmf(htime)); 
+    i.WriteU8(willingness);
+    
+    // NEW: Serialize GPS data [cite: 121, 122]
+    i.Write(reinterpret_cast<const uint8_t*>(&latitude), 4);
+    i.Write(reinterpret_cast<const uint8_t*>(&longitude), 4);
+    i.WriteHtonU16(altitude); 
 
-    i.WriteU16(0); // Reserved
-    i.WriteU8(this->hTime);
-    i.WriteU8(static_cast<uint8_t>(this->willingness));
-
-    for (auto iter = this->linkMessages.begin(); iter != this->linkMessages.end(); iter++)
+    for (const auto& linkMsg : linkMessages)
     {
-        const LinkMessage& lm = *iter;
-
-        i.WriteU8(lm.linkCode);
+        i.WriteU8(linkMsg.linkCode);
         i.WriteU8(0); // Reserved
-
-        // The size of the link message, counted in bytes and measured
-        // from the beginning of the "Link Code" field and until the
-        // next "Link Code" field (or - if there are no more link types
-        // - the end of the message).
-        i.WriteHtonU16(4 + lm.neighborInterfaceAddresses.size() * IPV4_ADDRESS_SIZE);
-
-        for (auto neigh_iter = lm.neighborInterfaceAddresses.begin();
-             neigh_iter != lm.neighborInterfaceAddresses.end();
-             neigh_iter++)
+        i.WriteHtonU16(linkMsg.messageSize);
+        for (const auto& neigh : linkMsg.neighbors)
         {
-            i.WriteHtonU32(neigh_iter->Get());
+            i.WriteHtonU32(neigh.address.Get());
+            i.WriteU8(neigh.lq);
+            i.WriteU8(neigh.nlq);
+            i.WriteHtonU16(neigh.relativeSpeed); // NEW: Relative speed [cite: 123]
         }
     }
 }
@@ -445,30 +441,46 @@ MessageHeader::Hello::Deserialize(Buffer::Iterator start, uint32_t messageSize)
 {
     Buffer::Iterator i = start;
 
-    NS_ASSERT(messageSize >= 4);
+    NS_ASSERT(messageSize >= 12);
 
     this->linkMessages.clear();
 
     uint16_t helloSizeLeft = messageSize;
 
-    i.ReadNtohU16(); // Reserved
-    this->hTime = i.ReadU8();
-    this->willingness = Willingness(i.ReadU8());
+    // 1. Read GPS and Timing Data (The first block)
+    this->altitude = i.ReadNtohU16(); // NEW: 2 bytes
+    this->hTime = i.ReadU8();         // 1 byte
+    this->willingness = i.ReadU8();   // 1 byte (Willingness object/enum)
+    
+    // NEW: Read Latitude (4 bytes)
+    i.Read(reinterpret_cast<uint8_t*>(&this->latitude), 4);
+    // NEW: Read Longitude (4 bytes)
+    i.Read(reinterpret_cast<uint8_t*>(&this->longitude), 4);
 
-    helloSizeLeft -= 4;
+    helloSizeLeft -= 12; // Adjusted for the 12 bytes read above
 
-    while (helloSizeLeft)
+    // 2. Read Link Messages (Neighbor Information)
+    while (helloSizeLeft > 0)
     {
         LinkMessage lm;
-        NS_ASSERT(helloSizeLeft >= 4);
         lm.linkCode = i.ReadU8();
-        i.ReadU8(); // Reserved
+        i.ReadU8(); // Reserved byte
         uint16_t lmSize = i.ReadNtohU16();
-        NS_ASSERT((lmSize - 4) % IPV4_ADDRESS_SIZE == 0);
-        for (int n = (lmSize - 4) / IPV4_ADDRESS_SIZE; n; --n)
+        
+        // P-OLSR neighbor entries are 8 bytes: 
+        // 4 (IP) + 1 (LQ) + 1 (NLQ) + 2 (Speed) = 8 bytes
+        NS_ASSERT((lmSize - 4) % 8 == 0); 
+        
+        for (int n = (lmSize - 4) / 8; n > 0; --n)
         {
-            lm.neighborInterfaceAddresses.emplace_back(i.ReadNtohU32());
+            Neighbor neigh;
+            neigh.address = Ipv4Address(i.ReadNtohU32());
+            neigh.lq = i.ReadU8();           // NEW: Link Quality
+            neigh.nlq = i.ReadU8();          // NEW: Neighbor Link Quality
+            neigh.relativeSpeed = i.ReadNtohU16(); // NEW: Relative Speed
+            lm.neighbors.push_back(neigh);
         }
+        
         helloSizeLeft -= lmSize;
         this->linkMessages.push_back(lm);
     }

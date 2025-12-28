@@ -346,17 +346,25 @@ class MessageHeader : public Header
      * HELLO Message Format
      *
     \verbatim
-      0                   1                   2                   3
-      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      0               1               2               3    
+      0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
 
      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     |          Reserved             |     Htime     |  Willingness  |
+     |          Altitude             |    Htime       |  Willingness |
+     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+     |                            Latitude                           |
+     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+     |                            Longitude                          |
      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
      |   Link Code   |   Reserved    |       Link Message Size       |
      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
      |                  Neighbor Interface Address                   |
      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+     |  φ(η′)        |    ρ(η′)      |      vi,j′ℓ(rel. speed)       |
+     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
      |                  Neighbor Interface Address                   |
+     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+     |  φ(η′′)       |    ρ(η′′)     |      vi,j′′ℓ(rel. speed)      |
      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
      :                             .  .  .                           :
      :                                                               :
@@ -376,14 +384,32 @@ class MessageHeader : public Header
         /**
          * Link message item
          */
+        uint8_t hTime; //!< HELLO emission interval (coded)
+        uint8_t willingness;
+
+        float latitude;  // 4 bytes 
+        float longitude; // 4 bytes 
+        uint16_t altitude; // 2 bytes
+
         struct LinkMessage
         {
-            uint8_t linkCode; //!< Link code
-            std::vector<Ipv4Address>
-                neighborInterfaceAddresses; //!< Neighbor interface address container.
+            uint8_t linkCode;
+            uint8_t reserved;
+            uint16_t messageSize;
+            
+            struct Neighbor
+            {
+                Ipv4Address address;
+                // P-OLSR fields for link quality 
+                uint8_t lq; // Link Quality (phi)
+                uint8_t nlq; // Neighbor Link Quality (rho)
+                uint16_t relativeSpeed; // 2 bytes for averaged relative speed 
+            };
+            std::vector<Neighbor> neighbors;    
         };
+        std::vector<LinkMessage> linkMessages;
 
-        uint8_t hTime; //!< HELLO emission interval (coded)
+        
 
         /**
          * Set the HELLO emission interval.
@@ -405,7 +431,7 @@ class MessageHeader : public Header
 
         Willingness willingness; //!< The willingness of a node to carry and forward traffic for
                                  //!< other nodes.
-        std::vector<LinkMessage> linkMessages; //!< Link messages container.
+         //!< Link messages container.
 
         /**
          * This method is used to print the content of a Hello message.
@@ -459,7 +485,15 @@ class MessageHeader : public Header
     {
         std::vector<Ipv4Address> neighborAddresses; //!< Neighbor address container.
         uint16_t ansn;                              //!< Advertised Neighbor Sequence Number.
+        uint16_t reserved;
 
+        struct Neighbor
+        {
+            Ipv4Address address;
+            // NEW: Added relative speed in TC messages [cite: 126]
+            uint16_t relativeSpeed; 
+        };
+        std::vector<Neighbor> neighborAddresses;
         /**
          * This method is used to print the content of a Tc message.
          * \param os output stream
