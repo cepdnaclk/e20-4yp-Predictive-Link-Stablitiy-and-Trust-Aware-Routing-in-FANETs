@@ -36,6 +36,34 @@ OlsrState::FindMprSelectorTuple(const Ipv4Address& mainAddr)
     return nullptr;
 }
 
+/**********************************************************************************/
+
+// Manage local GPS state
+void
+OlsrState::SetLocalPolsrPosition (float lat, float lon, int16_t alt)
+{
+  m_latitude = lat;
+  m_longitude = lon;
+  m_altitude = alt;
+}
+
+// Speed Prediction Logic
+float
+OlsrState::CalculatePolsrSpeed (float currentDist, float prevDist, Time deltaT, float prevAvgSpeed, float gamma)
+{
+  double dT = deltaT.GetSeconds ();
+  if (dT <= 0) return prevAvgSpeed;
+
+  // Instantaneous relative velocity between nodes i and j (Eq 5) 
+  float instantaneousV = (currentDist - prevDist) / dT;
+  // Exponential moving average to smooth GPS errors and wind gusts (Eq 6) 
+  float newAvgSpeed = (gamma * instantaneousV) + ((1 - gamma) * prevAvgSpeed);
+  
+  return newAvgSpeed;
+}
+
+/**********************************************************************************/
+
 void
 OlsrState::EraseMprSelectorTuple(const MprSelectorTuple& tuple)
 {
@@ -166,6 +194,8 @@ OlsrState::InsertNeighborTuple(const NeighborTuple& tuple)
         {
             // Update it
             *it = tuple;
+            // Relative Speed
+            it->relativeSpeed = tuple.relativeSpeed;
             return;
         }
     }
@@ -412,6 +442,17 @@ OlsrState::EraseOlderTopologyTuples(const Ipv4Address& lastAddr, uint16_t ansn)
 void
 OlsrState::InsertTopologyTuple(const TopologyTuple& tuple)
 {
+    for (auto it = m_topologySet.begin (); it != m_topologySet.end (); it++)
+    {
+      if (it->destAddr == tuple.destAddr && it->lastAddr == tuple.lastAddr)
+        {
+          // Update standard fields
+          *it = tuple;
+          // P-OLSR Extension: Update the relative speed from the TC message
+          it->relativeSpeed = tuple.relativeSpeed;
+          return;
+        }
+    }
     m_topologySet.push_back(tuple);
 }
 
