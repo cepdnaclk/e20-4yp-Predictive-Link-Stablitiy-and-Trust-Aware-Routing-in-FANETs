@@ -16,25 +16,25 @@
 namespace ns3
 {
 
-OlsrHelper::OlsrHelper()
+olsrHelper::olsrHelper()
 {
     m_agentFactory.SetTypeId("ns3::olsr::RoutingProtocol");
 }
 
-OlsrHelper::OlsrHelper(const OlsrHelper& o)
+olsrHelper::olsrHelper(const olsrHelper& o)
     : m_agentFactory(o.m_agentFactory)
 {
     m_interfaceExclusions = o.m_interfaceExclusions;
 }
 
-OlsrHelper*
-OlsrHelper::Copy() const
+olsrHelper*
+olsrHelper::Copy() const
 {
-    return new OlsrHelper(*this);
+    return new olsrHelper(*this);
 }
 
 void
-OlsrHelper::ExcludeInterface(Ptr<Node> node, uint32_t interface)
+olsrHelper::ExcludeInterface(Ptr<Node> node, uint32_t interface)
 {
     auto it = m_interfaceExclusions.find(node);
 
@@ -52,7 +52,7 @@ OlsrHelper::ExcludeInterface(Ptr<Node> node, uint32_t interface)
 }
 
 Ptr<Ipv4RoutingProtocol>
-OlsrHelper::Create(Ptr<Node> node) const
+olsrHelper::Create(Ptr<Node> node) const
 {
     Ptr<olsr::RoutingProtocol> agent = m_agentFactory.Create<olsr::RoutingProtocol>();
 
@@ -68,13 +68,13 @@ OlsrHelper::Create(Ptr<Node> node) const
 }
 
 void
-OlsrHelper::Set(std::string name, const AttributeValue& value)
+olsrHelper::Set(std::string name, const AttributeValue& value)
 {
     m_agentFactory.Set(name, value);
 }
 
 int64_t
-OlsrHelper::AssignStreams(NodeContainer c, int64_t stream)
+olsrHelper::AssignStreams(NodeContainer c, int64_t stream)
 {
     int64_t currentStream = stream;
     Ptr<Node> node;
@@ -91,20 +91,20 @@ OlsrHelper::AssignStreams(NodeContainer c, int64_t stream)
             currentStream += olsr->AssignStreams(currentStream);
             continue;
         }
-        // Olsr may also be in a list
+        // olsr may also be in a list
         Ptr<Ipv4ListRouting> list = DynamicCast<Ipv4ListRouting>(proto);
         if (list)
         {
             int16_t priority;
             Ptr<Ipv4RoutingProtocol> listProto;
-            Ptr<olsr::RoutingProtocol> listOlsr;
+            Ptr<olsr::RoutingProtocol> listolsr;
             for (uint32_t i = 0; i < list->GetNRoutingProtocols(); i++)
             {
                 listProto = list->GetRoutingProtocol(i, priority);
-                listOlsr = DynamicCast<olsr::RoutingProtocol>(listProto);
-                if (listOlsr)
+                listolsr = DynamicCast<olsr::RoutingProtocol>(listProto);
+                if (listolsr)
                 {
-                    currentStream += listOlsr->AssignStreams(currentStream);
+                    currentStream += listolsr->AssignStreams(currentStream);
                     break;
                 }
             }

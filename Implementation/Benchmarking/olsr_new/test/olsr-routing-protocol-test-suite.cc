@@ -27,29 +27,29 @@ using namespace olsr;
  *
  * Testcase for MPR computation mechanism
  */
-class OlsrMprTestCase : public TestCase
+class olsrMprTestCase : public TestCase
 {
   public:
-    OlsrMprTestCase();
-    ~OlsrMprTestCase() override;
+    olsrMprTestCase();
+    ~olsrMprTestCase() override;
     void DoRun() override;
 };
 
-OlsrMprTestCase::OlsrMprTestCase()
-    : TestCase("Check OLSR MPR computing mechanism")
+olsrMprTestCase::olsrMprTestCase()
+    : TestCase("Check olsr MPR computing mechanism")
 {
 }
 
-OlsrMprTestCase::~OlsrMprTestCase()
+olsrMprTestCase::~olsrMprTestCase()
 {
 }
 
 void
-OlsrMprTestCase::DoRun()
+olsrMprTestCase::DoRun()
 {
     Ptr<RoutingProtocol> protocol = CreateObject<RoutingProtocol>();
     protocol->m_mainAddress = Ipv4Address("10.0.0.1");
-    OlsrState& state = protocol->m_state;
+    olsrState& state = protocol->m_state;
 
     /*
      *  1 -- 2
@@ -167,18 +167,18 @@ OlsrMprTestCase::DoRun()
  * \ingroup olsr-test
  * \ingroup tests
  *
- * OLSR protocol test suite
+ * olsr protocol test suite
  */
-class OlsrProtocolTestSuite : public TestSuite
+class olsrProtocolTestSuite : public TestSuite
 {
   public:
-    OlsrProtocolTestSuite();
+    olsrProtocolTestSuite();
 };
 
-OlsrProtocolTestSuite::OlsrProtocolTestSuite()
+olsrProtocolTestSuite::olsrProtocolTestSuite()
     : TestSuite("routing-olsr", Type::UNIT)
 {
-    AddTestCase(new OlsrMprTestCase(), TestCase::Duration::QUICK);
+    AddTestCase(new olsrMprTestCase(), TestCase::Duration::QUICK);
 }
 
-static OlsrProtocolTestSuite g_olsrProtocolTestSuite; //!< Static variable for test initialization
+static olsrProtocolTestSuite g_olsrProtocolTestSuite; //!< Static variable for test initialization

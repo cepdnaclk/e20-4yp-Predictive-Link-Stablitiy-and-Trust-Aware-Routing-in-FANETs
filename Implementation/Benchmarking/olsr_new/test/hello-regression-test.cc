@@ -33,7 +33,7 @@ namespace olsr
 {
 
 HelloRegressionTest::HelloRegressionTest()
-    : TestCase("Test OLSR Hello messages generation"),
+    : TestCase("Test olsr Hello messages generation"),
       m_time(Seconds(5)),
       m_countA(0),
       m_countB(0)
@@ -65,12 +65,12 @@ HelloRegressionTest::CreateNodes()
     // create 2 nodes
     NodeContainer c;
     c.Create(2);
-    // install TCP/IP & OLSR
-    OlsrHelper olsr;
+    // install TCP/IP & olsr
+    olsrHelper olsr;
     InternetStackHelper internet;
     internet.SetRoutingHelper(olsr);
     internet.Install(c);
-    // Assign OLSR RVs to specific streams
+    // Assign olsr RVs to specific streams
     int64_t streamsUsed = olsr.AssignStreams(c, 0);
     NS_TEST_ASSERT_MSG_EQ(streamsUsed, 2, "Should have assigned 2 streams");
     // create channel & devices

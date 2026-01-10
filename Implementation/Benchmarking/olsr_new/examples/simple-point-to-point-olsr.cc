@@ -4,7 +4,7 @@
  */
 
 //
-// Simple example of OLSR routing over some point-to-point links
+// Simple example of olsr routing over some point-to-point links
 //
 // Network topology
 //
@@ -39,7 +39,7 @@
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("SimplePointToPointOlsrExample");
+NS_LOG_COMPONENT_DEFINE("SimplePointToPointolsrExample");
 
 int
 main(int argc, char* argv[])
@@ -72,9 +72,9 @@ main(int argc, char* argv[])
     NodeContainer n32 = NodeContainer(c.Get(3), c.Get(2));
     NodeContainer n34 = NodeContainer(c.Get(3), c.Get(4));
 
-    // Enable OLSR
-    NS_LOG_INFO("Enabling OLSR Routing.");
-    OlsrHelper olsr;
+    // Enable olsr
+    NS_LOG_INFO("Enabling olsr Routing.");
+    olsrHelper olsr;
 
     Ipv4StaticRoutingHelper staticRouting;
 

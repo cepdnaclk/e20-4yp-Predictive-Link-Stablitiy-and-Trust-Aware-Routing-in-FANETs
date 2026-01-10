@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: GPL-2.0-only
  */
 
-// OLSR was observed to not converge in simple 3-nodes varying topology.
+// olsr was observed to not converge in simple 3-nodes varying topology.
 // https://www.nsnam.org/bugzilla/show_bug.cgi?id=780
 // tcpdump -r bug780-0-0.pcap -nn -tt icmp | wc
 // should show about 395 packets; there is a ping outage from time
@@ -33,7 +33,7 @@ namespace olsr
 {
 
 Bug780Test::Bug780Test()
-    : TestCase("Test OLSR bug 780"),
+    : TestCase("Test olsr bug 780"),
       m_time(Seconds(200.0)),
       m_seq(0),
       m_recvCount(0)
@@ -65,8 +65,8 @@ Bug780Test::CreateNodes()
     NodeContainer c;
     c.Create(3);
 
-    // install TCP/IP & OLSR
-    OlsrHelper olsr;
+    // install TCP/IP & olsr
+    olsrHelper olsr;
     InternetStackHelper internet;
     internet.SetRoutingHelper(olsr);
     internet.Install(c);

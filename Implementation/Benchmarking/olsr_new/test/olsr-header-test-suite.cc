@@ -19,20 +19,20 @@ using namespace ns3;
  *
  * Check Emf olsr time conversion
  */
-class OlsrEmfTestCase : public TestCase
+class olsrEmfTestCase : public TestCase
 {
   public:
-    OlsrEmfTestCase();
+    olsrEmfTestCase();
     void DoRun() override;
 };
 
-OlsrEmfTestCase::OlsrEmfTestCase()
+olsrEmfTestCase::olsrEmfTestCase()
     : TestCase("Check Emf olsr time conversion")
 {
 }
 
 void
-OlsrEmfTestCase::DoRun()
+olsrEmfTestCase::DoRun()
 {
     for (int time = 1; time <= 30; time++)
     {
@@ -48,20 +48,20 @@ OlsrEmfTestCase::DoRun()
  *
  * Check Mid olsr messages
  */
-class OlsrMidTestCase : public TestCase
+class olsrMidTestCase : public TestCase
 {
   public:
-    OlsrMidTestCase();
+    olsrMidTestCase();
     void DoRun() override;
 };
 
-OlsrMidTestCase::OlsrMidTestCase()
+olsrMidTestCase::olsrMidTestCase()
     : TestCase("Check Mid olsr messages")
 {
 }
 
 void
-OlsrMidTestCase::DoRun()
+olsrMidTestCase::DoRun()
 {
     Packet packet;
 
@@ -99,7 +99,7 @@ OlsrMidTestCase::DoRun()
         msg2.SetMessageType(olsr::MessageHeader::MID_MESSAGE);
         msg2.SetMessageSequenceNumber(7);
 
-        // Build an OLSR packet header
+        // Build an olsr packet header
         hdr.SetPacketLength(hdr.GetSerializedSize() + msg1.GetSerializedSize() +
                             msg2.GetSerializedSize());
         hdr.SetPacketSequenceNumber(123);
@@ -161,20 +161,20 @@ OlsrMidTestCase::DoRun()
  *
  * Check Hello olsr messages
  */
-class OlsrHelloTestCase : public TestCase
+class olsrHelloTestCase : public TestCase
 {
   public:
-    OlsrHelloTestCase();
+    olsrHelloTestCase();
     void DoRun() override;
 };
 
-OlsrHelloTestCase::OlsrHelloTestCase()
+olsrHelloTestCase::olsrHelloTestCase()
     : TestCase("Check Hello olsr messages")
 {
 }
 
 void
-OlsrHelloTestCase::DoRun()
+olsrHelloTestCase::DoRun()
 {
     Packet packet;
     olsr::MessageHeader msgIn;
@@ -232,20 +232,20 @@ OlsrHelloTestCase::DoRun()
  *
  * Check Tc olsr messages
  */
-class OlsrTcTestCase : public TestCase
+class olsrTcTestCase : public TestCase
 {
   public:
-    OlsrTcTestCase();
+    olsrTcTestCase();
     void DoRun() override;
 };
 
-OlsrTcTestCase::OlsrTcTestCase()
+olsrTcTestCase::olsrTcTestCase()
     : TestCase("Check Tc olsr messages")
 {
 }
 
 void
-OlsrTcTestCase::DoRun()
+olsrTcTestCase::DoRun()
 {
     Packet packet;
     olsr::MessageHeader msgIn;
@@ -275,20 +275,20 @@ OlsrTcTestCase::DoRun()
  *
  * Check Hna olsr messages
  */
-class OlsrHnaTestCase : public TestCase
+class olsrHnaTestCase : public TestCase
 {
   public:
-    OlsrHnaTestCase();
+    olsrHnaTestCase();
     void DoRun() override;
 };
 
-OlsrHnaTestCase::OlsrHnaTestCase()
+olsrHnaTestCase::olsrHnaTestCase()
     : TestCase("Check Hna olsr messages")
 {
 }
 
 void
-OlsrHnaTestCase::DoRun()
+olsrHnaTestCase::DoRun()
 {
     Packet packet;
     olsr::MessageHeader msgIn;
@@ -321,20 +321,20 @@ OlsrHnaTestCase::DoRun()
  *
  * Check olsr header messages
  */
-class OlsrTestSuite : public TestSuite
+class olsrTestSuite : public TestSuite
 {
   public:
-    OlsrTestSuite();
+    olsrTestSuite();
 };
 
-OlsrTestSuite::OlsrTestSuite()
+olsrTestSuite::olsrTestSuite()
     : TestSuite("routing-olsr-header", Type::UNIT)
 {
-    AddTestCase(new OlsrHnaTestCase(), TestCase::Duration::QUICK);
-    AddTestCase(new OlsrTcTestCase(), TestCase::Duration::QUICK);
-    AddTestCase(new OlsrHelloTestCase(), TestCase::Duration::QUICK);
-    AddTestCase(new OlsrMidTestCase(), TestCase::Duration::QUICK);
-    AddTestCase(new OlsrEmfTestCase(), TestCase::Duration::QUICK);
+    AddTestCase(new olsrHnaTestCase(), TestCase::Duration::QUICK);
+    AddTestCase(new olsrTcTestCase(), TestCase::Duration::QUICK);
+    AddTestCase(new olsrHelloTestCase(), TestCase::Duration::QUICK);
+    AddTestCase(new olsrMidTestCase(), TestCase::Duration::QUICK);
+    AddTestCase(new olsrEmfTestCase(), TestCase::Duration::QUICK);
 }
 
-static OlsrTestSuite g_olsrTestSuite; //!< Static variable for test initialization
+static olsrTestSuite g_olsrTestSuite; //!< Static variable for test initialization

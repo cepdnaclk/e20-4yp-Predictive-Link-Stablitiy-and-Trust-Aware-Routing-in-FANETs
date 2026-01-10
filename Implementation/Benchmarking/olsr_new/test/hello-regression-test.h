@@ -23,9 +23,9 @@ namespace olsr
  * \ingroup olsr-test
  * \ingroup tests
  *
- * \brief Trivial (still useful) test of OLSR operation
+ * \brief Trivial (still useful) test of olsr operation
  *
- * This test creates 2 stations with point-to-point link and runs OLSR without any extra traffic.
+ * This test creates 2 stations with point-to-point link and runs olsr without any extra traffic.
  * It is expected that only HELLO messages will be sent.
  *
  * Expected trace (5 seconds):

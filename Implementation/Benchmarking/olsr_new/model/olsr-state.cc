@@ -11,7 +11,7 @@
 ///
 /// \file olsr-state.cc
 /// \brief Implementation of all functions needed for manipulating the internal
-///        state of an OLSR node.
+///        state of an olsr node.
 ///
 
 #include "olsr-state.h"
@@ -24,7 +24,7 @@ namespace olsr
 /********** MPR Selector Set Manipulation **********/
 
 MprSelectorTuple*
-OlsrState::FindMprSelectorTuple(const Ipv4Address& mainAddr)
+olsrState::FindMprSelectorTuple(const Ipv4Address& mainAddr)
 {
     for (auto it = m_mprSelectorSet.begin(); it != m_mprSelectorSet.end(); it++)
     {
@@ -40,7 +40,7 @@ OlsrState::FindMprSelectorTuple(const Ipv4Address& mainAddr)
 
 // Manage local GPS state
 void
-OlsrState::SetPosition (float lat, float lon, int16_t alt)
+olsrState::SetPosition (float lat, float lon, int16_t alt)
 {
   m_latitude = lat;
   m_longitude = lon;
@@ -49,7 +49,7 @@ OlsrState::SetPosition (float lat, float lon, int16_t alt)
 
 // Speed Prediction Logic
 float
-OlsrState::CalculatePolsrSpeed (float currentDist, float prevDist, Time deltaT, float prevAvgSpeed, float gamma)
+olsrState::CalculatePolsrSpeed (float currentDist, float prevDist, Time deltaT, float prevAvgSpeed, float gamma)
 {
   double dT = deltaT.GetSeconds ();
   if (dT <= 0) return prevAvgSpeed;
@@ -65,7 +65,7 @@ OlsrState::CalculatePolsrSpeed (float currentDist, float prevDist, Time deltaT, 
 /**********************************************************************************/
 
 void
-OlsrState::EraseMprSelectorTuple(const MprSelectorTuple& tuple)
+olsrState::EraseMprSelectorTuple(const MprSelectorTuple& tuple)
 {
     for (auto it = m_mprSelectorSet.begin(); it != m_mprSelectorSet.end(); it++)
     {
@@ -78,7 +78,7 @@ OlsrState::EraseMprSelectorTuple(const MprSelectorTuple& tuple)
 }
 
 void
-OlsrState::EraseMprSelectorTuples(const Ipv4Address& mainAddr)
+olsrState::EraseMprSelectorTuples(const Ipv4Address& mainAddr)
 {
     for (auto it = m_mprSelectorSet.begin(); it != m_mprSelectorSet.end();)
     {
@@ -94,13 +94,13 @@ OlsrState::EraseMprSelectorTuples(const Ipv4Address& mainAddr)
 }
 
 void
-OlsrState::InsertMprSelectorTuple(const MprSelectorTuple& tuple)
+olsrState::InsertMprSelectorTuple(const MprSelectorTuple& tuple)
 {
     m_mprSelectorSet.push_back(tuple);
 }
 
 std::string
-OlsrState::PrintMprSelectorSet() const
+olsrState::PrintMprSelectorSet() const
 {
     std::ostringstream os;
     os << "[";
@@ -121,7 +121,7 @@ OlsrState::PrintMprSelectorSet() const
 /********** Neighbor Set Manipulation **********/
 
 NeighborTuple*
-OlsrState::FindNeighborTuple(const Ipv4Address& mainAddr)
+olsrState::FindNeighborTuple(const Ipv4Address& mainAddr)
 {
     for (auto it = m_neighborSet.begin(); it != m_neighborSet.end(); it++)
     {
@@ -134,7 +134,7 @@ OlsrState::FindNeighborTuple(const Ipv4Address& mainAddr)
 }
 
 const NeighborTuple*
-OlsrState::FindSymNeighborTuple(const Ipv4Address& mainAddr) const
+olsrState::FindSymNeighborTuple(const Ipv4Address& mainAddr) const
 {
     for (auto it = m_neighborSet.begin(); it != m_neighborSet.end(); it++)
     {
@@ -147,7 +147,7 @@ OlsrState::FindSymNeighborTuple(const Ipv4Address& mainAddr) const
 }
 
 NeighborTuple*
-OlsrState::FindNeighborTuple(const Ipv4Address& mainAddr, Willingness willingness)
+olsrState::FindNeighborTuple(const Ipv4Address& mainAddr, Willingness willingness)
 {
     for (auto it = m_neighborSet.begin(); it != m_neighborSet.end(); it++)
     {
@@ -160,7 +160,7 @@ OlsrState::FindNeighborTuple(const Ipv4Address& mainAddr, Willingness willingnes
 }
 
 void
-OlsrState::EraseNeighborTuple(const NeighborTuple& tuple)
+olsrState::EraseNeighborTuple(const NeighborTuple& tuple)
 {
     for (auto it = m_neighborSet.begin(); it != m_neighborSet.end(); it++)
     {
@@ -173,7 +173,7 @@ OlsrState::EraseNeighborTuple(const NeighborTuple& tuple)
 }
 
 void
-OlsrState::EraseNeighborTuple(const Ipv4Address& mainAddr)
+olsrState::EraseNeighborTuple(const Ipv4Address& mainAddr)
 {
     for (auto it = m_neighborSet.begin(); it != m_neighborSet.end(); it++)
     {
@@ -186,7 +186,7 @@ OlsrState::EraseNeighborTuple(const Ipv4Address& mainAddr)
 }
 
 void
-OlsrState::InsertNeighborTuple(const NeighborTuple& tuple)
+olsrState::InsertNeighborTuple(const NeighborTuple& tuple)
 {
     for (auto it = m_neighborSet.begin(); it != m_neighborSet.end(); it++)
     {
@@ -203,7 +203,7 @@ OlsrState::InsertNeighborTuple(const NeighborTuple& tuple)
 /********** Neighbor 2 Hop Set Manipulation **********/
 
 TwoHopNeighborTuple*
-OlsrState::FindTwoHopNeighborTuple(const Ipv4Address& neighborMainAddr,
+olsrState::FindTwoHopNeighborTuple(const Ipv4Address& neighborMainAddr,
                                    const Ipv4Address& twoHopNeighborAddr)
 {
     for (auto it = m_twoHopNeighborSet.begin(); it != m_twoHopNeighborSet.end(); it++)
@@ -218,7 +218,7 @@ OlsrState::FindTwoHopNeighborTuple(const Ipv4Address& neighborMainAddr,
 }
 
 void
-OlsrState::EraseTwoHopNeighborTuple(const TwoHopNeighborTuple& tuple)
+olsrState::EraseTwoHopNeighborTuple(const TwoHopNeighborTuple& tuple)
 {
     for (auto it = m_twoHopNeighborSet.begin(); it != m_twoHopNeighborSet.end(); it++)
     {
@@ -231,7 +231,7 @@ OlsrState::EraseTwoHopNeighborTuple(const TwoHopNeighborTuple& tuple)
 }
 
 void
-OlsrState::EraseTwoHopNeighborTuples(const Ipv4Address& neighborMainAddr,
+olsrState::EraseTwoHopNeighborTuples(const Ipv4Address& neighborMainAddr,
                                      const Ipv4Address& twoHopNeighborAddr)
 {
     for (auto it = m_twoHopNeighborSet.begin(); it != m_twoHopNeighborSet.end();)
@@ -249,7 +249,7 @@ OlsrState::EraseTwoHopNeighborTuples(const Ipv4Address& neighborMainAddr,
 }
 
 void
-OlsrState::EraseTwoHopNeighborTuples(const Ipv4Address& neighborMainAddr)
+olsrState::EraseTwoHopNeighborTuples(const Ipv4Address& neighborMainAddr)
 {
     for (auto it = m_twoHopNeighborSet.begin(); it != m_twoHopNeighborSet.end();)
     {
@@ -265,7 +265,7 @@ OlsrState::EraseTwoHopNeighborTuples(const Ipv4Address& neighborMainAddr)
 }
 
 void
-OlsrState::InsertTwoHopNeighborTuple(const TwoHopNeighborTuple& tuple)
+olsrState::InsertTwoHopNeighborTuple(const TwoHopNeighborTuple& tuple)
 {
     m_twoHopNeighborSet.push_back(tuple);
 }
@@ -273,20 +273,20 @@ OlsrState::InsertTwoHopNeighborTuple(const TwoHopNeighborTuple& tuple)
 /********** MPR Set Manipulation **********/
 
 bool
-OlsrState::FindMprAddress(const Ipv4Address& addr)
+olsrState::FindMprAddress(const Ipv4Address& addr)
 {
     auto it = m_mprSet.find(addr);
     return (it != m_mprSet.end());
 }
 
 void
-OlsrState::SetMprSet(MprSet mprSet)
+olsrState::SetMprSet(MprSet mprSet)
 {
     m_mprSet = mprSet;
 }
 
 MprSet
-OlsrState::GetMprSet() const
+olsrState::GetMprSet() const
 {
     return m_mprSet;
 }
@@ -294,7 +294,7 @@ OlsrState::GetMprSet() const
 /********** Duplicate Set Manipulation **********/
 
 DuplicateTuple*
-OlsrState::FindDuplicateTuple(const Ipv4Address& addr, uint16_t sequenceNumber)
+olsrState::FindDuplicateTuple(const Ipv4Address& addr, uint16_t sequenceNumber)
 {
     for (auto it = m_duplicateSet.begin(); it != m_duplicateSet.end(); it++)
     {
@@ -307,7 +307,7 @@ OlsrState::FindDuplicateTuple(const Ipv4Address& addr, uint16_t sequenceNumber)
 }
 
 void
-OlsrState::EraseDuplicateTuple(const DuplicateTuple& tuple)
+olsrState::EraseDuplicateTuple(const DuplicateTuple& tuple)
 {
     for (auto it = m_duplicateSet.begin(); it != m_duplicateSet.end(); it++)
     {
@@ -320,7 +320,7 @@ OlsrState::EraseDuplicateTuple(const DuplicateTuple& tuple)
 }
 
 void
-OlsrState::InsertDuplicateTuple(const DuplicateTuple& tuple)
+olsrState::InsertDuplicateTuple(const DuplicateTuple& tuple)
 {
     m_duplicateSet.push_back(tuple);
 }
@@ -328,7 +328,7 @@ OlsrState::InsertDuplicateTuple(const DuplicateTuple& tuple)
 /********** Link Set Manipulation **********/
 
 LinkTuple*
-OlsrState::FindLinkTuple(const Ipv4Address& ifaceAddr)
+olsrState::FindLinkTuple(const Ipv4Address& ifaceAddr)
 {
     for (auto it = m_linkSet.begin(); it != m_linkSet.end(); it++)
     {
@@ -341,7 +341,7 @@ OlsrState::FindLinkTuple(const Ipv4Address& ifaceAddr)
 }
 
 LinkTuple*
-OlsrState::FindSymLinkTuple(const Ipv4Address& ifaceAddr, Time now)
+olsrState::FindSymLinkTuple(const Ipv4Address& ifaceAddr, Time now)
 {
     for (auto it = m_linkSet.begin(); it != m_linkSet.end(); it++)
     {
@@ -361,7 +361,7 @@ OlsrState::FindSymLinkTuple(const Ipv4Address& ifaceAddr, Time now)
 }
 
 void
-OlsrState::EraseLinkTuple(const LinkTuple& tuple)
+olsrState::EraseLinkTuple(const LinkTuple& tuple)
 {
     for (auto it = m_linkSet.begin(); it != m_linkSet.end(); it++)
     {
@@ -374,7 +374,7 @@ OlsrState::EraseLinkTuple(const LinkTuple& tuple)
 }
 
 LinkTuple&
-OlsrState::InsertLinkTuple(const LinkTuple& tuple)
+olsrState::InsertLinkTuple(const LinkTuple& tuple)
 {
     m_linkSet.push_back(tuple);
     return m_linkSet.back();
@@ -383,7 +383,7 @@ OlsrState::InsertLinkTuple(const LinkTuple& tuple)
 /********** Topology Set Manipulation **********/
 
 TopologyTuple*
-OlsrState::FindTopologyTuple(const Ipv4Address& destAddr, const Ipv4Address& lastAddr)
+olsrState::FindTopologyTuple(const Ipv4Address& destAddr, const Ipv4Address& lastAddr)
 {
     for (auto it = m_topologySet.begin(); it != m_topologySet.end(); it++)
     {
@@ -396,7 +396,7 @@ OlsrState::FindTopologyTuple(const Ipv4Address& destAddr, const Ipv4Address& las
 }
 
 TopologyTuple*
-OlsrState::FindNewerTopologyTuple(const Ipv4Address& lastAddr, uint16_t ansn)
+olsrState::FindNewerTopologyTuple(const Ipv4Address& lastAddr, uint16_t ansn)
 {
     for (auto it = m_topologySet.begin(); it != m_topologySet.end(); it++)
     {
@@ -409,7 +409,7 @@ OlsrState::FindNewerTopologyTuple(const Ipv4Address& lastAddr, uint16_t ansn)
 }
 
 void
-OlsrState::EraseTopologyTuple(const TopologyTuple& tuple)
+olsrState::EraseTopologyTuple(const TopologyTuple& tuple)
 {
     for (auto it = m_topologySet.begin(); it != m_topologySet.end(); it++)
     {
@@ -422,7 +422,7 @@ OlsrState::EraseTopologyTuple(const TopologyTuple& tuple)
 }
 
 void
-OlsrState::EraseOlderTopologyTuples(const Ipv4Address& lastAddr, uint16_t ansn)
+olsrState::EraseOlderTopologyTuples(const Ipv4Address& lastAddr, uint16_t ansn)
 {
     for (auto it = m_topologySet.begin(); it != m_topologySet.end();)
     {
@@ -438,7 +438,7 @@ OlsrState::EraseOlderTopologyTuples(const Ipv4Address& lastAddr, uint16_t ansn)
 }
 
 void
-OlsrState::InsertTopologyTuple(const TopologyTuple& tuple)
+olsrState::InsertTopologyTuple(const TopologyTuple& tuple)
 {
     for (auto it = m_topologySet.begin (); it != m_topologySet.end (); it++)
     {
@@ -446,7 +446,7 @@ OlsrState::InsertTopologyTuple(const TopologyTuple& tuple)
         {
           // Update standard fields
           *it = tuple;
-          // P-OLSR Extension: Update the speed weight from the TC message
+          // P-olsr Extension: Update the speed weight from the TC message
           it->hasSpeedWeight = tuple.hasSpeedWeight;
           it->speedWeight = tuple.speedWeight;
           return;
@@ -458,7 +458,7 @@ OlsrState::InsertTopologyTuple(const TopologyTuple& tuple)
 /********** Interface Association Set Manipulation **********/
 
 IfaceAssocTuple*
-OlsrState::FindIfaceAssocTuple(const Ipv4Address& ifaceAddr)
+olsrState::FindIfaceAssocTuple(const Ipv4Address& ifaceAddr)
 {
     for (auto it = m_ifaceAssocSet.begin(); it != m_ifaceAssocSet.end(); it++)
     {
@@ -471,7 +471,7 @@ OlsrState::FindIfaceAssocTuple(const Ipv4Address& ifaceAddr)
 }
 
 const IfaceAssocTuple*
-OlsrState::FindIfaceAssocTuple(const Ipv4Address& ifaceAddr) const
+olsrState::FindIfaceAssocTuple(const Ipv4Address& ifaceAddr) const
 {
     for (auto it = m_ifaceAssocSet.begin(); it != m_ifaceAssocSet.end(); it++)
     {
@@ -484,7 +484,7 @@ OlsrState::FindIfaceAssocTuple(const Ipv4Address& ifaceAddr) const
 }
 
 void
-OlsrState::EraseIfaceAssocTuple(const IfaceAssocTuple& tuple)
+olsrState::EraseIfaceAssocTuple(const IfaceAssocTuple& tuple)
 {
     for (auto it = m_ifaceAssocSet.begin(); it != m_ifaceAssocSet.end(); it++)
     {
@@ -497,13 +497,13 @@ OlsrState::EraseIfaceAssocTuple(const IfaceAssocTuple& tuple)
 }
 
 void
-OlsrState::InsertIfaceAssocTuple(const IfaceAssocTuple& tuple)
+olsrState::InsertIfaceAssocTuple(const IfaceAssocTuple& tuple)
 {
     m_ifaceAssocSet.push_back(tuple);
 }
 
 std::vector<Ipv4Address>
-OlsrState::FindNeighborInterfaces(const Ipv4Address& neighborMainAddr) const
+olsrState::FindNeighborInterfaces(const Ipv4Address& neighborMainAddr) const
 {
     std::vector<Ipv4Address> retval;
     for (auto it = m_ifaceAssocSet.begin(); it != m_ifaceAssocSet.end(); it++)
@@ -519,7 +519,7 @@ OlsrState::FindNeighborInterfaces(const Ipv4Address& neighborMainAddr) const
 /********** Host-Network Association Set Manipulation **********/
 
 AssociationTuple*
-OlsrState::FindAssociationTuple(const Ipv4Address& gatewayAddr,
+olsrState::FindAssociationTuple(const Ipv4Address& gatewayAddr,
                                 const Ipv4Address& networkAddr,
                                 const Ipv4Mask& netmask)
 {
@@ -535,7 +535,7 @@ OlsrState::FindAssociationTuple(const Ipv4Address& gatewayAddr,
 }
 
 void
-OlsrState::EraseAssociationTuple(const AssociationTuple& tuple)
+olsrState::EraseAssociationTuple(const AssociationTuple& tuple)
 {
     for (auto it = m_associationSet.begin(); it != m_associationSet.end(); it++)
     {
@@ -548,13 +548,13 @@ OlsrState::EraseAssociationTuple(const AssociationTuple& tuple)
 }
 
 void
-OlsrState::InsertAssociationTuple(const AssociationTuple& tuple)
+olsrState::InsertAssociationTuple(const AssociationTuple& tuple)
 {
     m_associationSet.push_back(tuple);
 }
 
 void
-OlsrState::EraseAssociation(const Association& tuple)
+olsrState::EraseAssociation(const Association& tuple)
 {
     for (auto it = m_associations.begin(); it != m_associations.end(); it++)
     {
@@ -567,7 +567,7 @@ OlsrState::EraseAssociation(const Association& tuple)
 }
 
 void
-OlsrState::InsertAssociation(const Association& tuple)
+olsrState::InsertAssociation(const Association& tuple)
 {
     m_associations.push_back(tuple);
 }

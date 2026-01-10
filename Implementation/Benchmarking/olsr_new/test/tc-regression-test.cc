@@ -33,7 +33,7 @@ namespace olsr
 {
 
 TcRegressionTest::TcRegressionTest()
-    : TestCase("Test OLSR Topology Control message generation"),
+    : TestCase("Test olsr Topology Control message generation"),
       m_time(Seconds(20)),
       m_countA(0),
       m_countB(0),
@@ -68,8 +68,8 @@ TcRegressionTest::CreateNodes()
     NodeContainer c;
     c.Create(3);
 
-    // install TCP/IP & OLSR
-    OlsrHelper olsr;
+    // install TCP/IP & olsr
+    olsrHelper olsr;
     InternetStackHelper internet;
     internet.SetRoutingHelper(olsr);
     internet.Install(c);

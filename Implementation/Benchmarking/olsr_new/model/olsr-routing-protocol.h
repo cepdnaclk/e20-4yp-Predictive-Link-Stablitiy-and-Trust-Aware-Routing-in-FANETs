@@ -8,8 +8,8 @@
  *          Gustavo J. A. M. Carneiro <gjc@inescporto.pt>
  */
 
-#ifndef OLSR_AGENT_IMPL_H
-#define OLSR_AGENT_IMPL_H
+#ifndef olsr_AGENT_IMPL_H
+#define olsr_AGENT_IMPL_H
 
 #include "olsr-header.h"
 #include "olsr-repositories.h"
@@ -34,7 +34,7 @@
 #include <vector>
 
 /// Testcase for MPR computation mechanism
-class OlsrMprTestCase;
+class olsrMprTestCase;
 
 namespace ns3
 {
@@ -42,19 +42,19 @@ namespace olsr
 {
 
 ///
-/// \defgroup olsr OLSR Routing
-/// This section documents the API of the ns-3 OLSR module. For a generic
+/// \defgroup olsr olsr Routing
+/// This section documents the API of the ns-3 olsr module. For a generic
 /// functional description, please refer to the ns-3 manual.
 
 /// \ingroup olsr
-/// An OLSR's routing table entry.
+/// An olsr's routing table entry.
 struct RoutingTableEntry
 {
     Ipv4Address destAddr; //!< Address of the destination node.
     Ipv4Address nextAddr; //!< Address of the next hop.
     uint32_t interface;   //!< Interface index
     uint32_t distance;    //!< Distance in hops to the destination.
-    double metric;        //!< Weighted routing metric (P-OLSR mobility-weighted cost)
+    double metric;        //!< Weighted routing metric (P-olsr mobility-weighted cost)
 
     RoutingTableEntry()
         : // default values
@@ -72,7 +72,7 @@ class RoutingProtocol;
 ///
 /// \ingroup olsr
 ///
-/// \brief OLSR routing protocol for IPv4
+/// \brief olsr routing protocol for IPv4
 ///
 class RoutingProtocol : public Ipv4RoutingProtocol
 {
@@ -80,9 +80,9 @@ class RoutingProtocol : public Ipv4RoutingProtocol
     /**
      * Declared friend to enable unit tests.
      */
-    friend class ::OlsrMprTestCase;
+    friend class ::olsrMprTestCase;
 
-    static const uint16_t OLSR_PORT_NUMBER; //!< port number (698)
+    static const uint16_t olsr_PORT_NUMBER; //!< port number (698)
 
     /**
      * \brief Get the type ID.
@@ -94,7 +94,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
     ~RoutingProtocol() override;
 
     /**
-     * \brief Set the OLSR main address to the first address on the indicated interface.
+     * \brief Set the olsr main address to the first address on the indicated interface.
      *
      * \param interface IPv4 interface index
      */
@@ -109,7 +109,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
 
     /**
      * Get the routing table entries.
-     * \return the list of routing table entries discovered by OLSR
+     * \return the list of routing table entries discovered by olsr
      */
     std::vector<RoutingTableEntry> GetRoutingTableEntries() const;
 
@@ -127,27 +127,27 @@ class RoutingProtocol : public Ipv4RoutingProtocol
 
     /**
      * Get the one hop neighbors.
-     * \return the set of neighbors discovered by OLSR
+     * \return the set of neighbors discovered by olsr
      */
     const NeighborSet& GetNeighbors() const;
 
     /**
      * Get the two hop neighbors.
-     * \return the set of two hop neighbors discovered by OLSR
+     * \return the set of two hop neighbors discovered by olsr
      */
     const TwoHopNeighborSet& GetTwoHopNeighbors() const;
 
     /**
      * Gets the topology set.
-     * \returns The topology set discovery by OLSR
+     * \returns The topology set discovery by olsr
      */
     const TopologySet& GetTopologySet() const;
 
     /**
-     * Gets the underlying OLSR state object
-     * \returns The OLSR state object
+     * Gets the underlying olsr state object
+     * \returns The olsr state object
      */
-    const OlsrState& GetOlsrState() const;
+    const olsrState& GetolsrState() const;
 
     /**
      * Assign a fixed random variable stream number to the random variables
@@ -209,7 +209,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
     /**
      * \brief Removes the specified (networkAddr, netmask) tuple from the list of
      * local HNA associations to be sent by the node via HNA messages.
-     * If this tuple does not exist, nothing is done (see "OlsrState::EraseAssociation()").
+     * If this tuple does not exist, nothing is done (see "olsrState::EraseAssociation()").
      *
      * \param networkAddr The network address.
      * \param netmask The network mask.
@@ -218,7 +218,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
 
     /**
      * \brief Associates the specified Ipv4StaticRouting routing table
-     *        to the OLSR routing protocol. Entries from this associated
+     *        to the olsr routing protocol. Entries from this associated
      *        routing table that use non-olsr outgoing interfaces are added
      *        to the list of local HNA associations so that they are included
      *        in HNA messages sent by the node.
@@ -255,7 +255,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
     Time m_hnaInterval;        //!< HNA messages' emission interval.
     Willingness m_willingness; //!< Willingness for forwarding packets on behalf of other nodes.
 
-    OlsrState m_state; //!< Internal state with all needed data structs.
+    olsrState m_state; //!< Internal state with all needed data structs.
     Ptr<Ipv4> m_ipv4;  //!< IPv4 object the routing is linked to.
 
     /**
@@ -359,7 +359,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
     void NotifyRemoveAddress(uint32_t interface, Ipv4InterfaceAddress address) override;
 
     /**
-     * Send an OLSR message.
+     * Send an olsr message.
      * \param packet The packet to be sent.
      * \param containedMessages The messages contained in the packet.
      */
@@ -378,10 +378,10 @@ class RoutingProtocol : public Ipv4RoutingProtocol
     inline uint16_t GetMessageSequenceNumber();
 
     /**
-     * Receive an OLSR message.
+     * Receive an olsr message.
      * \param socket The receiving socket.
      */
-    void RecvOlsr(Ptr<Socket> socket);
+    void Recvolsr(Ptr<Socket> socket);
 
     /**
      * \brief Computes MPR set of a node following \RFC{3626} hints.
@@ -403,12 +403,12 @@ class RoutingProtocol : public Ipv4RoutingProtocol
 
   private:
     /**
-     * \brief Tests whether or not the specified route uses a non-OLSR outgoing interface.
+     * \brief Tests whether or not the specified route uses a non-olsr outgoing interface.
      * \param route The route to be tested.
-     * \returns True if the outgoing interface of the specified route is a non-OLSR interface,
+     * \returns True if the outgoing interface of the specified route is a non-olsr interface,
      * false otherwise.
      */
-    bool UsesNonOlsrOutgoingInterface(const Ipv4RoutingTableEntry& route);
+    bool UsesNonolsrOutgoingInterface(const Ipv4RoutingTableEntry& route);
 
     // Timer handlers
     Timer m_helloTimer; //!< Timer for the HELLO message.
@@ -440,7 +440,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
     /**
      * \brief Removes tuple if expired. Else timer is rescheduled to expire at tuple.expirationTime.
      *
-     * The task of actually removing the tuple is left to the OLSR agent.
+     * The task of actually removing the tuple is left to the olsr agent.
      *
      * \param address The address of the tuple.
      * \param sequenceNumber The sequence number of the tuple.
@@ -456,7 +456,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
      * tuple_->time(). Otherwise the timer is rescheduled to expire at
      * the minimum between tuple_->time() and tuple_->sym_time().
      *
-     * The task of actually removing the tuple is left to the OLSR agent.
+     * The task of actually removing the tuple is left to the olsr agent.
      *
      * \param neighborIfaceAddr The tuple neighbor interface address.
      */
@@ -466,7 +466,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
      * \brief Removes 2_hop neighbor tuple_ if expired. Else the timer is rescheduled to expire at
      * tuple_->time().
      *
-     * The task of actually removing the tuple is left to the OLSR agent.
+     * The task of actually removing the tuple is left to the olsr agent.
      *
      * \param neighborMainAddr The neighbor main address.
      * \param twoHopNeighborAddr The 2-hop neighbor address.
@@ -477,7 +477,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
      * \brief Removes MPR selector tuple_ if expired. Else the timer is rescheduled to expire at
      * tuple_->time().
      *
-     * The task of actually removing the tuple is left to the OLSR agent.
+     * The task of actually removing the tuple is left to the olsr agent.
      *
      * \param mainAddr The tuple IPv4 address.
      */
@@ -487,7 +487,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
      * \brief Removes topology tuple_ if expired. Else the timer is rescheduled to expire at
      * tuple_->time().
      *
-     * The task of actually removing the tuple is left to the OLSR agent.
+     * The task of actually removing the tuple is left to the olsr agent.
      *
      * \param destAddr The destination address.
      * \param lastAddr The last address.
@@ -524,11 +524,11 @@ class RoutingProtocol : public Ipv4RoutingProtocol
     Timer m_queuedMessagesTimer; //!< timer for throttling outgoing messages
 
     /**
-     * \brief OLSR's default forwarding algorithm.
+     * \brief olsr's default forwarding algorithm.
      *
      * See \RFC{3626} for details.
      *
-     * \param olsrMessage The %OLSR message which must be forwarded.
+     * \param olsrMessage The %olsr message which must be forwarded.
      * \param duplicated NULL if the message has never been considered for forwarding, or a
      * duplicate tuple in other case.
      * \param localIface The address of the interface where the message was received from.
@@ -540,42 +540,42 @@ class RoutingProtocol : public Ipv4RoutingProtocol
                         const Ipv4Address& senderAddress);
 
     /**
-     * \brief Enqueues an %OLSR message which will be sent with a delay of (0, delay].
+     * \brief Enqueues an %olsr message which will be sent with a delay of (0, delay].
      *
-     * This buffering system is used in order to piggyback several %OLSR messages in
-     * a same %OLSR packet.
+     * This buffering system is used in order to piggyback several %olsr messages in
+     * a same %olsr packet.
      *
-     * \param message the %OLSR message which must be sent.
-     * \param delay maximum delay the %OLSR message is going to be buffered.
+     * \param message the %olsr message which must be sent.
+     * \param delay maximum delay the %olsr message is going to be buffered.
      */
     void QueueMessage(const olsr::MessageHeader& message, Time delay);
 
     /**
-     * \brief Creates as many %OLSR packets as needed in order to send all buffered
-     * %OLSR messages.
+     * \brief Creates as many %olsr packets as needed in order to send all buffered
+     * %olsr messages.
      *
-     * Maximum number of messages which can be contained in an %OLSR packet is
-     * dictated by OLSR_MAX_MSGS constant.
+     * Maximum number of messages which can be contained in an %olsr packet is
+     * dictated by olsr_MAX_MSGS constant.
      */
     void SendQueuedMessages();
 
     /**
-     * \brief Creates a new %OLSR HELLO message which is buffered for being sent later on.
+     * \brief Creates a new %olsr HELLO message which is buffered for being sent later on.
      */
     void SendHello();
 
     /**
-     * \brief Creates a new %OLSR TC message which is buffered for being sent later on.
+     * \brief Creates a new %olsr TC message which is buffered for being sent later on.
      */
     void SendTc();
 
     /**
-     * \brief Creates a new %OLSR MID message which is buffered for being sent later on.
+     * \brief Creates a new %olsr MID message which is buffered for being sent later on.
      */
     void SendMid();
 
     /**
-     * \brief Creates a new %OLSR HNA message which is buffered for being sent later on.
+     * \brief Creates a new %olsr HNA message which is buffered for being sent later on.
      */
     void SendHna();
 
@@ -717,7 +717,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
      * Link sensing and population of the Neighbor Set, 2-hop Neighbor Set and MPR
      * Selector Set are performed.
      *
-     * \param msg the %OLSR message which contains the HELLO message.
+     * \param msg the %olsr message which contains the HELLO message.
      * \param receiverIface the address of the interface where the message was received from.
      * \param senderIface the address of the interface where the message was sent from.
      */
@@ -731,7 +731,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
      * The Topology Set is updated (if needed) with the information of
      * the received TC message.
      *
-     * \param msg The %OLSR message which contains the TC message.
+     * \param msg The %olsr message which contains the TC message.
      * \param senderIface The address of the interface where the message was sent from.
      *
      */
@@ -743,7 +743,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
      * The Interface Association Set is updated (if needed) with the information
      * of the received MID message.
      *
-     * \param msg the %OLSR message which contains the MID message.
+     * \param msg the %olsr message which contains the MID message.
      * \param senderIface the address of the interface where the message was sent from.
      */
     void ProcessMid(const olsr::MessageHeader& msg, const Ipv4Address& senderIface);
@@ -755,7 +755,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
      * The Host Network Association Set is updated (if needed) with the information
      * of the received HNA message.
      *
-     * \param msg the %OLSR message which contains the HNA message.
+     * \param msg the %olsr message which contains the HNA message.
      * \param senderIface the address of the interface where the message was sent from.
      *
      */
@@ -813,7 +813,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
     Ipv4Address m_mainAddress; //!< the node main address.
 
     // One socket per interface, each bound to that interface's address
-    // (reason: for OLSR Link Sensing we need to know on which interface
+    // (reason: for olsr Link Sensing we need to know on which interface
     // HELLO messages arrive)
     std::map<Ptr<Socket>, Ipv4InterfaceAddress>
         m_sendSockets;        //!< Container of sockets and the interfaces they are opened onto.
@@ -832,7 +832,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
     Ptr<UniformRandomVariable> m_uniformRandomVariable;
 
   public:
-    // Helper to calculate P-OLSR link weight
+    // Helper to calculate P-olsr link weight
     // Returns a multiplier (< 1 for approaching, > 1 for moving away)
     double GetSpeedWeight(Vector myVel, Vector myPos, Vector neighVel, Vector neighPos);
 
@@ -845,4 +845,4 @@ class RoutingProtocol : public Ipv4RoutingProtocol
 } // namespace olsr
 } // namespace ns3
 
-#endif /* OLSR_AGENT_IMPL_H */
+#endif /* olsr_AGENT_IMPL_H */

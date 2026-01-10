@@ -14,19 +14,19 @@
 #include <cmath>
 
 #define IPV4_ADDRESS_SIZE 4
-#define OLSR_MSG_HEADER_SIZE 12
-#define OLSR_PKT_HEADER_SIZE 4
+#define olsr_MSG_HEADER_SIZE 12
+#define olsr_PKT_HEADER_SIZE 4
 
 namespace ns3
 {
 
-NS_LOG_COMPONENT_DEFINE("OlsrHeader");
+NS_LOG_COMPONENT_DEFINE("olsrHeader");
 
 namespace olsr
 {
 
 /// Scaling factor used in RFC 3626.
-#define OLSR_C 0.0625
+#define olsr_C 0.0625
 
 ///
 /// \brief Converts a decimal number of seconds to the mantissa/exponent format.
@@ -40,18 +40,18 @@ SecondsToEmf(double seconds)
     int a;
     int b = 0;
 
-    NS_ASSERT_MSG(seconds >= OLSR_C, "SecondsToEmf - Can not convert a value less than OLSR_C");
+    NS_ASSERT_MSG(seconds >= olsr_C, "SecondsToEmf - Can not convert a value less than olsr_C");
 
     // find the largest integer 'b' such that: T/C >= 2^b
-    for (b = 1; (seconds / OLSR_C) >= (1 << b); ++b)
+    for (b = 1; (seconds / olsr_C) >= (1 << b); ++b)
     {
     }
-    NS_ASSERT((seconds / OLSR_C) < (1 << b));
+    NS_ASSERT((seconds / olsr_C) < (1 << b));
     b--;
-    NS_ASSERT((seconds / OLSR_C) >= (1 << b));
+    NS_ASSERT((seconds / olsr_C) >= (1 << b));
 
     // compute the expression 16*(T/(C*(2^b))-1), which may not be a integer
-    double tmp = 16 * (seconds / (OLSR_C * (1 << b)) - 1);
+    double tmp = 16 * (seconds / (olsr_C * (1 << b)) - 1);
 
     // round it up.  This results in the value for 'a'
     a = (int)std::ceil(tmp - 0.5);
@@ -83,10 +83,10 @@ EmfToSeconds(uint8_t olsrFormat)
     int a = (olsrFormat >> 4);
     int b = (olsrFormat & 0xf);
     // value = C*(1+a/16)*2^b [in seconds]
-    return OLSR_C * (1 + a / 16.0) * (1 << b);
+    return olsr_C * (1 + a / 16.0) * (1 << b);
 }
 
-// ---------------- OLSR Packet -------------------------------
+// ---------------- olsr Packet -------------------------------
 
 NS_OBJECT_ENSURE_REGISTERED(PacketHeader);
 
@@ -103,7 +103,7 @@ PacketHeader::GetTypeId()
 {
     static TypeId tid = TypeId("ns3::olsr::PacketHeader")
                             .SetParent<Header>()
-                            .SetGroupName("Olsr")
+                            .SetGroupName("olsr")
                             .AddConstructor<PacketHeader>();
     return tid;
 }
@@ -117,7 +117,7 @@ PacketHeader::GetInstanceTypeId() const
 uint32_t
 PacketHeader::GetSerializedSize() const
 {
-    return OLSR_PKT_HEADER_SIZE;
+    return olsr_PKT_HEADER_SIZE;
 }
 
 void
@@ -143,7 +143,7 @@ PacketHeader::Deserialize(Buffer::Iterator start)
     return GetSerializedSize();
 }
 
-// ---------------- OLSR Message -------------------------------
+// ---------------- olsr Message -------------------------------
 
 NS_OBJECT_ENSURE_REGISTERED(MessageHeader);
 
@@ -161,7 +161,7 @@ MessageHeader::GetTypeId()
 {
     static TypeId tid = TypeId("ns3::olsr::MessageHeader")
                             .SetParent<Header>()
-                            .SetGroupName("Olsr")
+                            .SetGroupName("olsr")
                             .AddConstructor<MessageHeader>();
     return tid;
 }
@@ -175,7 +175,7 @@ MessageHeader::GetInstanceTypeId() const
 uint32_t
 MessageHeader::GetSerializedSize() const
 {
-    uint32_t size = OLSR_MSG_HEADER_SIZE;
+    uint32_t size = olsr_MSG_HEADER_SIZE;
     switch (m_messageType)
     {
     case MID_MESSAGE:
@@ -287,20 +287,20 @@ MessageHeader::Deserialize(Buffer::Iterator start)
     m_timeToLive = i.ReadU8();
     m_hopCount = i.ReadU8();
     m_messageSequenceNumber = i.ReadNtohU16();
-    size = OLSR_MSG_HEADER_SIZE;
+    size = olsr_MSG_HEADER_SIZE;
     switch (m_messageType)
     {
     case MID_MESSAGE:
-        size += m_message.mid.Deserialize(i, m_messageSize - OLSR_MSG_HEADER_SIZE);
+        size += m_message.mid.Deserialize(i, m_messageSize - olsr_MSG_HEADER_SIZE);
         break;
     case HELLO_MESSAGE:
-        size += m_message.hello.Deserialize(i, m_messageSize - OLSR_MSG_HEADER_SIZE);
+        size += m_message.hello.Deserialize(i, m_messageSize - olsr_MSG_HEADER_SIZE);
         break;
     case TC_MESSAGE:
-        size += m_message.tc.Deserialize(i, m_messageSize - OLSR_MSG_HEADER_SIZE);
+        size += m_message.tc.Deserialize(i, m_messageSize - olsr_MSG_HEADER_SIZE);
         break;
     case HNA_MESSAGE:
-        size += m_message.hna.Deserialize(i, m_messageSize - OLSR_MSG_HEADER_SIZE);
+        size += m_message.hna.Deserialize(i, m_messageSize - olsr_MSG_HEADER_SIZE);
         break;
     default:
         NS_ASSERT(false);
@@ -308,7 +308,7 @@ MessageHeader::Deserialize(Buffer::Iterator start)
     return size;
 }
 
-// ---------------- OLSR MID Message -------------------------------
+// ---------------- olsr MID Message -------------------------------
 
 uint32_t
 MessageHeader::Mid::GetSerializedSize() const
@@ -366,12 +366,12 @@ MessageHeader::Mid::Deserialize(Buffer::Iterator start, uint32_t messageSize)
     return GetSerializedSize();
 }
 
-// ---------------- OLSR HELLO Message -------------------------------
+// ---------------- olsr HELLO Message -------------------------------
 
 uint32_t
 MessageHeader::Hello::GetSerializedSize() const
 {
-    // P-OLSR Header Fixed Part:
+    // P-olsr Header Fixed Part:
     // HTime(1) + Willingness(1) + Alt(2) + Lat(4) + Lon(4) + VelX(4) + VelY(4) + VelZ(4) 
     // Total = 24 bytes
     uint32_t size = 24; 
@@ -380,7 +380,7 @@ MessageHeader::Hello::GetSerializedSize() const
     {
         size += 4; // Link Code (1) + Reserved(1) + Message Size (2)
         
-        // P-OLSR Neighbor Size:
+        // P-olsr Neighbor Size:
         // IP(4) + LQ(1) + NLQ(1) + Speed(2) = 8 bytes per neighbor
         size += 8 * lm.neighbors.size();
     }
@@ -457,7 +457,7 @@ MessageHeader::Hello::Deserialize(Buffer::Iterator start, uint32_t messageSize)
 {
     Buffer::Iterator i = start;
 
-    NS_ASSERT(messageSize >= 24); // Ensure we have at least the P-OLSR header
+    NS_ASSERT(messageSize >= 24); // Ensure we have at least the P-olsr header
 
     this->linkMessages.clear();
     uint32_t helloSizeLeft = messageSize;
@@ -528,7 +528,7 @@ MessageHeader::Hello::Deserialize(Buffer::Iterator start, uint32_t messageSize)
     return messageSize;
 }
 
-// ---------------- OLSR TC Message -------------------------------
+// ---------------- olsr TC Message -------------------------------
 
 uint32_t
 MessageHeader::Tc::GetSerializedSize() const
@@ -573,7 +573,7 @@ MessageHeader::Tc::Serialize(Buffer::Iterator start) const
     {
         i.WriteHtonU32(neigh.address.Get()); // 4 bytes IP
         i.WriteHtonU16(0);                   // 2 bytes Reserved
-        i.WriteHtonU16(neigh.weight);        // 2 bytes P-OLSR Weight
+        i.WriteHtonU16(neigh.weight);        // 2 bytes P-olsr Weight
     }
 }
 
@@ -592,8 +592,8 @@ MessageHeader::Tc::Deserialize(Buffer::Iterator start, uint32_t messageSize)
     uint32_t dataSize = messageSize - 4;
 
     // Safety check: The remaining bytes must be a multiple of 8 (Addr+Res+Wt)
-    // If this fails, it means we received a standard OLSR packet, not P-OLSR.
-    NS_ASSERT_MSG(dataSize % 8 == 0, "TC Message size mismatch! Expected P-OLSR format (8 bytes/neighbor).");
+    // If this fails, it means we received a standard olsr packet, not P-olsr.
+    NS_ASSERT_MSG(dataSize % 8 == 0, "TC Message size mismatch! Expected P-olsr format (8 bytes/neighbor).");
     
     int numNeighbors = dataSize / 8;
     
@@ -609,7 +609,7 @@ MessageHeader::Tc::Deserialize(Buffer::Iterator start, uint32_t messageSize)
     return messageSize;
 }
 
-// ---------------- OLSR HNA Message -------------------------------
+// ---------------- olsr HNA Message -------------------------------
 
 uint32_t
 MessageHeader::Hna::GetSerializedSize() const

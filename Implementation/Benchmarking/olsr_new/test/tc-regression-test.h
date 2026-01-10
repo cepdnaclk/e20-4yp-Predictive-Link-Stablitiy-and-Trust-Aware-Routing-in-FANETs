@@ -23,9 +23,9 @@ namespace olsr
  * \ingroup olsr-test
  * \ingroup tests
  *
- * \brief Less trivial test of OLSR Topology Control message generation
+ * \brief Less trivial test of olsr Topology Control message generation
  *
- * This test simulates 3 Wi-Fi stations with chain topology and runs OLSR without any extra traffic.
+ * This test simulates 3 Wi-Fi stations with chain topology and runs olsr without any extra traffic.
  * It is expected that only second station will send TC messages.
  *
  * Expected trace (20 seconds, note random b-cast jitter):

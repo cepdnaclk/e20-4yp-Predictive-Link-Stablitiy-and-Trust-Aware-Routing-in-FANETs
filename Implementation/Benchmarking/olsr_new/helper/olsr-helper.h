@@ -5,8 +5,8 @@
  *
  * Author: Mathieu Lacage <mathieu.lacage@sophia.inria.fr>
  */
-#ifndef OLSR_HELPER_H
-#define OLSR_HELPER_H
+#ifndef olsr_HELPER_H
+#define olsr_HELPER_H
 
 #include "ns3/ipv4-routing-helper.h"
 #include "ns3/node-container.h"
@@ -22,44 +22,44 @@ namespace ns3
 /**
  * \ingroup olsr
  *
- * \brief Helper class that adds OLSR routing to nodes.
+ * \brief Helper class that adds olsr routing to nodes.
  *
  * This class is expected to be used in conjunction with
  * ns3::InternetStackHelper::SetRoutingHelper
  */
-class OlsrHelper : public Ipv4RoutingHelper
+class olsrHelper : public Ipv4RoutingHelper
 {
   public:
     /**
-     * Create an OlsrHelper that makes life easier for people who want to install
-     * OLSR routing to nodes.
+     * Create an olsrHelper that makes life easier for people who want to install
+     * olsr routing to nodes.
      */
-    OlsrHelper();
+    olsrHelper();
 
     /**
-     * \brief Construct an OlsrHelper from another previously initialized instance
+     * \brief Construct an olsrHelper from another previously initialized instance
      * (Copy Constructor).
      *
      * \param o object to copy
      */
-    OlsrHelper(const OlsrHelper& o);
+    olsrHelper(const olsrHelper& o);
 
     // Delete assignment operator to avoid misuse
-    OlsrHelper& operator=(const OlsrHelper&) = delete;
+    olsrHelper& operator=(const olsrHelper&) = delete;
 
     /**
-     * \returns pointer to clone of this OlsrHelper
+     * \returns pointer to clone of this olsrHelper
      *
      * This method is mainly for internal use by the other helpers;
      * clients are expected to free the dynamic memory allocated by this method
      */
-    OlsrHelper* Copy() const override;
+    olsrHelper* Copy() const override;
 
     /**
      * \param node the node for which an exception is to be defined
-     * \param interface an interface of node on which OLSR is not to be installed
+     * \param interface an interface of node on which olsr is not to be installed
      *
-     * This method allows the user to specify an interface on which OLSR is not to be installed on
+     * This method allows the user to specify an interface on which olsr is not to be installed on
      */
     void ExcludeInterface(Ptr<Node> node, uint32_t interface);
 
@@ -86,7 +86,7 @@ class OlsrHelper : public Ipv4RoutingHelper
      * should have previously been called by the user.
      *
      * \param stream first stream index to use
-     * \param c NodeContainer of the set of nodes for which the OlsrRoutingProtocol
+     * \param c NodeContainer of the set of nodes for which the olsrRoutingProtocol
      *          should be modified to use a fixed stream
      * \return the number of stream indices assigned by this helper
      */
@@ -96,9 +96,9 @@ class OlsrHelper : public Ipv4RoutingHelper
     ObjectFactory m_agentFactory; //!< Object factory
 
     std::map<Ptr<Node>, std::set<uint32_t>>
-        m_interfaceExclusions; //!< container of interfaces excluded from OLSR operations
+        m_interfaceExclusions; //!< container of interfaces excluded from olsr operations
 };
 
 } // namespace ns3
 
-#endif /* OLSR_HELPER_H */
+#endif /* olsr_HELPER_H */

@@ -8,8 +8,8 @@
  * Gustavo J. A. M. Carneiro <gjc@inescporto.pt>
  */
 
-#ifndef OLSR_STATE_H
-#define OLSR_STATE_H
+#ifndef olsr_STATE_H
+#define olsr_STATE_H
 
 #include "olsr-repositories.h"
 #include "ns3/vector.h" // <--- CRITICAL FIX: Added for Vector class
@@ -20,11 +20,11 @@ namespace olsr
 {
 
 /// \ingroup olsr
-/// This class encapsulates all data structures needed for maintaining internal state of an OLSR
+/// This class encapsulates all data structures needed for maintaining internal state of an olsr
 /// node.
-class OlsrState
+class olsrState
 {
-    //  friend class Olsr;
+    //  friend class olsr;
 
   protected:
     LinkSet m_linkSet;                     //!< Link Set (\RFC{3626}, section 4.2.1).
@@ -40,7 +40,7 @@ class OlsrState
     Associations m_associations;     //!< The node's local Host Network Associations that will be
                                      //!< advertised using HNA messages.
 
-    // --- P-OLSR EXTENSION STATE ---
+    // --- P-olsr EXTENSION STATE ---
     // Own GPS Coordinates
     float m_latitude;             // Current latitude
     float m_longitude;            // Current longitude
@@ -52,14 +52,14 @@ class OlsrState
     float m_velZ;
                                      
   public:
-    OlsrState()
+    olsrState()
     {
         // Initialize to 0
         m_latitude = 0; m_longitude = 0; m_altitude = 0;
         m_velX = 0; m_velY = 0; m_velZ = 0;
     }
 
-    // Updates the local node's position and velocity (P-OLSR extension)
+    // Updates the local node's position and velocity (P-olsr extension)
     void SetStateVector (Vector pos, Vector vel) {
         m_latitude = (float)pos.x;
         m_longitude = (float)pos.y;
@@ -458,4 +458,4 @@ class OlsrState
 } // namespace olsr
 } // namespace ns3
 
-#endif /* OLSR_STATE_H */
+#endif /* olsr_STATE_H */

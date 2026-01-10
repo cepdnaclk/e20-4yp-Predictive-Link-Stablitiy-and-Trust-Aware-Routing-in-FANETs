@@ -8,11 +8,11 @@
 
 //
 // This script, adapted from examples/wireless/wifi-simple-adhoc illustrates
-// the use of OLSR HNA.
+// the use of olsr HNA.
 //
 // Network Topology:
 //
-//             |------ OLSR ------|   |---- non-OLSR ----|
+//             |------ olsr ------|   |---- non-olsr ----|
 //           A ))))            (((( B ------------------- C
 //           10.1.1.1     10.1.1.2   172.16.1.2     172.16.1.1
 //
@@ -54,7 +54,7 @@
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("OlsrHna");
+NS_LOG_COMPONENT_DEFINE("olsrHna");
 
 void
 ReceivePacket(Ptr<Socket> socket)
@@ -174,9 +174,9 @@ main(int argc, char* argv[])
     mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
     mobility.Install(olsrNodes);
 
-    OlsrHelper olsr;
+    olsrHelper olsr;
 
-    // Specify Node B's csma device as a non-OLSR device.
+    // Specify Node B's csma device as a non-olsr device.
     olsr.ExcludeInterface(olsrNodes.Get(1), 2);
 
     Ipv4StaticRoutingHelper staticRouting;
@@ -241,7 +241,7 @@ main(int argc, char* argv[])
 
         // Add the required routes into the Ipv4StaticRouting Protocol instance
         // and have the node generate HNA messages for all these routes
-        // which are associated with non-OLSR interfaces specified above.
+        // which are associated with non-olsr interfaces specified above.
         hnaEntries->AddNetworkRouteTo(Ipv4Address("172.16.1.0"),
                                       Ipv4Mask("255.255.255.0"),
                                       uint32_t(2),

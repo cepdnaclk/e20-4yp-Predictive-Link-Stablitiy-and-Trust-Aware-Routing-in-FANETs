@@ -6,8 +6,8 @@
  * Author: Gustavo J. A. M. Carneiro  <gjc@inescporto.pt>
  */
 
-#ifndef OLSR_HEADER_H
-#define OLSR_HEADER_H
+#ifndef olsr_HEADER_H
+#define olsr_HEADER_H
 
 #include "olsr-repositories.h"
 
@@ -30,7 +30,7 @@ uint8_t SecondsToEmf(double seconds);
 /**
  * \ingroup olsr
  *
- * The basic layout of any packet in OLSR is as follows (omitting IP and
+ * The basic layout of any packet in olsr is as follows (omitting IP and
  * UDP headers):
   \verbatim
     0                   1                   2                   3
@@ -301,9 +301,9 @@ class MessageHeader : public Header
       0                   1                   2                   3
       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     |                    OLSR Interface Address                     |
+     |                    olsr Interface Address                     |
      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     |                    OLSR Interface Address                     |
+     |                    olsr Interface Address                     |
      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
      |                              ...                              |
      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -387,7 +387,7 @@ class MessageHeader : public Header
          */
         uint8_t hTime; //!< HELLO emission interval (coded)
 
-        // --- P-OLSR FIELDS ---
+        // --- P-olsr FIELDS ---
         float latitude;  // 4 bytes 
         float longitude; // 4 bytes 
         uint16_t altitude; // 2 bytes
@@ -434,7 +434,7 @@ class MessageHeader : public Header
             struct Neighbor
             {
                 Ipv4Address address;
-                // P-OLSR fields for link quality 
+                // P-olsr fields for link quality 
                 uint8_t lq; // Link Quality (phi)
                 uint8_t nlq; // Neighbor Link Quality (rho)
                 uint16_t weight; // 2 bytes for averaged relative speed 
@@ -525,7 +525,7 @@ class MessageHeader : public Header
             Ipv4Address address;
             // Added relative speed in TC messages [cite: 126]
             uint16_t reserved;    // Padding
-            uint16_t weight;      // P-OLSR Weight or Relative Speed
+            uint16_t weight;      // P-olsr Weight or Relative Speed
         };
         std::vector<Neighbor> neighbors; //!< Neighbor list including weights
 
@@ -779,4 +779,4 @@ operator<<(std::ostream& os, const MessageList& messages)
 } // namespace olsr
 } // namespace ns3
 
-#endif /* OLSR_HEADER_H */
+#endif /* olsr_HEADER_H */
