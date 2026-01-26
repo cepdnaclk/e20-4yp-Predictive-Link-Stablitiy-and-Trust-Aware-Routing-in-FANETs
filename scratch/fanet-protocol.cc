@@ -557,6 +557,7 @@ FanetRoutingProtocol::ProcessFanetPacket(Ptr<Packet> packet,
             }
 
             Ptr<Packet> fwd = packet->Copy();
+            fwd->AddHeader(fanet);
             InetSocketAddress dst(Ipv4Address::GetBroadcast(), FANET_UDP_PORT);
             sock->SendTo(fwd, 0, dst);
         }
