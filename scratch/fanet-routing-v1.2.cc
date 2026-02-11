@@ -159,6 +159,15 @@ FanetHeader::Deserialize(Buffer::Iterator start)
         neighbors.push_back(Ipv4Address(start.ReadNtohU32()));
         bytesRead += 4;
     }
+    // Read MPR list
+    uint8_t mprCount = start.ReadU8(); bytesRead += 1;
+    mprSelectorList.clear();
+    mprSelectorList.reserve(mprCount);
+    for (uint8_t i = 0; i < mprCount; i++)
+    {
+        mprSelectorList.push_back(Ipv4Address(start.ReadNtohU32()));
+        bytesRead += 4;
+    }
     return bytesRead;
 }
 // MPR - minimize the overhead of flooding
