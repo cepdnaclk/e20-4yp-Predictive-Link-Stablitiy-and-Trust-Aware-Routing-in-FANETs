@@ -84,23 +84,6 @@ struct LinkMetric
     Time firstSeen;      // Timestamp of the first HELLO received     
     uint32_t helloCount; // Number of hello messages   
     uint32_t helloExpected; // Number of hello messages expected
-
-    // New Dynamic Metrics
-    uint32_t txPackets = 0;      // Total data packets sent to this neighbor
-    uint32_t rxPackets = 0;      // Total data packets successfully acknowledged/received
-    Time totalDelay;             // Cumulative delay for latency calculation
-    Time lastDelay;              // Delay of the last packet for jitter
-    double jitter = 0.0;
-    uint64_t totalBytes = 0;     // For throughput
-    Time lastByteTime;           // Timestamp of last received byte
-    
-    // Calculated Getters
-    double GetPDR() const { return txPackets > 0 ? (double)rxPackets / txPackets : 0.0; }
-    double GetLatencyMs() const { return rxPackets > 0 ? totalDelay.GetMilliSeconds() / rxPackets : 0.0; }
-    double GetThroughputKbps() const {
-        double duration = (Simulator::Now() - firstSeen).GetSeconds();
-        return duration > 0 ? (totalBytes * 8.0) / (duration * 1000.0) : 0.0;
-    }
 };
 
 // =====================
@@ -114,8 +97,7 @@ struct FanetHeader : public Header
     uint8_t neighborCount;              // Number of 1-hopneighbors
     std::vector<Ipv4Address> neighbors; // topology discovery
     std::vector<Ipv4Address> mprSelectorList; // Nodes that chose THIS node as MPR
-    uint64_t timestamp; // Add this: Time in microseconds
-    
+
     static TypeId GetTypeId(void);
     virtual TypeId GetInstanceTypeId(void) const override;
     virtual void Serialize(
@@ -155,8 +137,6 @@ FanetHeader::Serialize(Buffer::Iterator start) const
     // MPR - minimize the overhead of flooding
     start.WriteU8(mprSelectorList.size());
     for (auto& m : mprSelectorList) start.WriteHtonU32(m.Get());
-
-    start.WriteHtonU64(timestamp);
 }
 
 uint32_t
@@ -179,23 +159,22 @@ FanetHeader::Deserialize(Buffer::Iterator start)
         neighbors.push_back(Ipv4Address(start.ReadNtohU32()));
         bytesRead += 4;
     }
-
-    uint8_t mprCount = start.ReadU8();
-    bytesRead += 1;
+    // Read MPR list
+    uint8_t mprCount = start.ReadU8(); bytesRead += 1;
     mprSelectorList.clear();
-    for (uint8_t i = 0; i < mprCount; i++) {
+    mprSelectorList.reserve(mprCount);
+    for (uint8_t i = 0; i < mprCount; i++)
+    {
         mprSelectorList.push_back(Ipv4Address(start.ReadNtohU32()));
         bytesRead += 4;
     }
-    timestamp = start.ReadNtohU64(); 
-    bytesRead += 8;
     return bytesRead;
 }
 // MPR - minimize the overhead of flooding
 uint32_t
 FanetHeader::GetSerializedSize(void) const
 {
-    return 1 + 4 + 4 + 1 + (4 * neighbors.size()) + 1 + (4 * mprSelectorList.size()) + 8; // type + seq + nodeId + neighborCount + neighbors
+    return 1 + 4 + 4 + 1 + (4 * neighbors.size()) + 1 + (4 * mprSelectorList.size()); // type + seq + nodeId + neighborCount + neighbors
 }
 
 void
@@ -372,41 +351,11 @@ FanetRoutingProtocol::ComputeMprSet() {
 void
 FanetRoutingProtocol::PrintRoutingTable(Ptr<OutputStreamWrapper> stream, Time::Unit unit) const
 {
-    std::ostream* os = stream->GetStream();
-    *os << "\n--- FANET Routing Table (Node " << m_ipv4->GetObject<Node>()->GetId() << ") ---\n";
-    *os << std::left << std::setw(15) << "Destination" 
-        << std::setw(15) << "NextHop" 
-        << std::setw(10) << "PDR" 
-        << std::setw(12) << "Latency(ms)" 
-        << std::setw(10) << "Jitter" 
-        << "Throughput(Kbps)" << std::endl;
-
-    // 1. Print Direct Neighbors
-    for (const auto& [neighborIp, info] : m_neighborTable) {
-        auto it = m_linkMetrics.find(neighborIp);
-        if (it != m_linkMetrics.end()) {
-            const auto& m = it->second;
-            *os << std::left << std::setw(15) << neighborIp 
-                << std::setw(15) << "DIRECT" 
-                << std::setw(10) << std::fixed << std::setprecision(2) << m.GetPDR()
-                << std::setw(12) << m.GetLatencyMs()
-                << m.GetThroughputKbps() << std::endl;
-        }
+    for (const auto& [dest, entry] : m_routingTable)
+    {
+        *stream->GetStream() << "Dest: " << dest << " NextHop: " << entry.nextHop
+                             << " Interface: " << entry.interface << std::endl;
     }
-
-    // 2. Print Multi-hop Routes
-    for (const auto& [dest, entry] : m_routingTable) {
-        auto it = m_linkMetrics.find(entry.nextHop);
-        if (it != m_linkMetrics.end()) {
-            const auto& m = it->second;
-            *os << std::left << std::setw(15) << dest 
-                << std::setw(15) << entry.nextHop 
-                << std::setw(10) << m.GetPDR()
-                << std::setw(12) << m.GetLatencyMs()
-                << m.GetThroughputKbps() << std::endl;
-        }
-    }
-    *os << "------------------------------------------------------------\n";
 }
 
 // Set the Ipv4 object for this node and start protocol timers
@@ -422,8 +371,6 @@ FanetRoutingProtocol::SetIpv4(Ptr<Ipv4> ipv4)
 
     // 2. Start HELLO messages periodically once interfaces exist
     Simulator::Schedule(Seconds(0.0), &FanetRoutingProtocol::SendHello, this);
-    // Start TC messages periodically
-    Simulator::Schedule(Seconds(0.1), &FanetRoutingProtocol::SendTC, this);
 
     // 3. Start neighbor and topology expiry process
     ExpireNeighbors();
@@ -543,7 +490,6 @@ FanetRoutingProtocol::ExpireNeighbors()
 void
 FanetRoutingProtocol::SendHello()
 {
-    ComputeMprSet();
     for (auto& [nbr, metric] : m_linkMetrics)
     {
         metric.helloExpected++;
@@ -556,11 +502,8 @@ FanetRoutingProtocol::SendHello()
         header.type = HELLO;
         header.seq = m_helloSeq++;
         header.nodeId = m_ipv4->GetObject<Node>()->GetId();
-        header.timestamp = Simulator::Now().GetMicroSeconds();
-        for (auto const& mprAddr : m_mprSet) {
-            header.mprSelectorList.push_back(mprAddr);
-        }
         packet->AddHeader(header);
+
         InetSocketAddress dst(Ipv4Address::GetBroadcast(), FANET_UDP_PORT);
         sock->SendTo(packet, 0, dst);
 
@@ -589,7 +532,7 @@ FanetRoutingProtocol::SendTC()
         header.type = TC;
         header.seq = m_tcSeq++;
         header.nodeId = m_ipv4->GetObject<Node>()->GetId();
-        header.timestamp = Simulator::Now().GetMicroSeconds();
+
         // Copy direct neighbors
         for (const auto& [neighborIp, _] : m_neighborTable)
         {
@@ -668,27 +611,6 @@ FanetRoutingProtocol::ProcessFanetPacket(Ptr<Packet> packet,
     {
         bool changed = false;
         auto& metric = m_linkMetrics[senderIp];
-        metric.rxPackets++;
-        metric.totalBytes += (packet->GetSize() + fanet.GetSerializedSize());
-
-        // Latency calculation
-        Time sentTime = MicroSeconds(fanet.timestamp);
-        Time currentDelay = Simulator::Now() - sentTime;
-        metric.totalDelay += currentDelay;
-
-        if (metric.rxPackets > 1) {
-        // Jitter = |Delay_current - Delay_previous|
-            metric.jitter = 0.8 * metric.jitter + 0.2 * std::abs((currentDelay - metric.lastDelay).GetSeconds());
-        }
-        metric.totalDelay += currentDelay;
-        metric.lastDelay = currentDelay;
-
-        NS_LOG_INFO("Metrics Update from " << senderIp 
-                << " | PDR: " << metric.GetPDR() 
-                << " | Latency: " << metric.GetLatencyMs() << " ms"
-                << " | Jitter: " << metric.jitter << " s"
-                << " | Throughput: " << metric.GetThroughputKbps() << " Kbps");
-
         if (metric.helloCount == 0)
         {
             metric.firstSeen = Simulator::Now();
@@ -699,20 +621,6 @@ FanetRoutingProtocol::ProcessFanetPacket(Ptr<Packet> packet,
 
         metric.helloRate =
             static_cast<double>(metric.helloCount) / std::max(1u, metric.helloExpected);
-
-        bool selectedMe = false;
-        for (auto const& selector : fanet.mprSelectorList) {
-            if (selector == m_interfaces[0].local) {
-                selectedMe = true;
-                break;
-            }
-        }
-
-        if (selectedMe) {
-            m_mprSelectors.insert(senderIp);
-        } else {
-            m_mprSelectors.erase(senderIp);
-        }
 
         auto it = m_neighborTable.find(senderIp);
         if (it == m_neighborTable.end())
@@ -749,9 +657,6 @@ FanetRoutingProtocol::ProcessFanetPacket(Ptr<Packet> packet,
         entry.origin = senderIp;
         entry.neighbors = fanet.neighbors;
         entry.lastUpdate = Simulator::Now();
-
-        // Trigger routing table update because we learned a new multi-hop path
-        UpdateRoutingTable();
 
         // MPR FLOODING CONTROL
         // Only forward TC if the sender is someone who selected US as an MPR
@@ -935,13 +840,10 @@ FanetRoutingProtocol::RouteInput(Ptr<const Packet> p,
         NS_LOG_INFO("Node " << m_ipv4->GetAddress(1, 0).GetLocal() << " forwarding packet to "
                             << dest << " via gateway " << route->GetGateway() << " on interface "
                             << route->GetOutputDevice()->GetIfIndex());
-        
-        Ipv4Address nextHop = route->GetGateway();
-        m_linkMetrics[nextHop].txPackets++; // Track attempts
-        auto& metric = m_linkMetrics[nextHop];
+        auto& metric = m_linkMetrics[route->GetGateway()];
         metric.successRatio = 0.9 * metric.successRatio + 0.1;
-        double reward = ComputeReward(nextHop);
-        UpdateQValue(dest, nextHop, reward);
+        double reward = ComputeReward(route->GetGateway());
+        UpdateQValue(dest, route->GetGateway(), reward);
         ucb(route, p, header);
         return true;
     }
@@ -1016,22 +918,7 @@ FanetRoutingProtocol::ComputeReward(Ipv4Address nextHop)
 {
     const auto& m = m_linkMetrics[nextHop];
 
-    // Normalized Weights (should sum to 1.0)
-    double wPdr = 0.3;
-    double wLatency = 0.2;
-    double wThroughput = 0.2;
-    double wStability = 0.3;
-
-    // Normalize Latency (Lower is better, use inverse or exponential decay)
-    double normLatency = std::exp(-m.GetLatencyMs() / 100.0); 
-    
-    // Normalize Throughput (Compare against a nominal max, e.g., 54Mbps for 802.11g)
-    double normThroughput = std::min(1.0, m.GetThroughputKbps() / 54000.0);
-
-    double r = (wPdr * m.GetPDR()) + 
-               (wLatency * normLatency) + 
-               (wThroughput * normThroughput) + 
-               (wStability * std::min(1.0, m.stability / 10.0));
+    double r = 0.5 * m.helloRate + 0.3 * m.successRatio + 0.2 * std::min(1.0, m.stability / 5.0);
 
     return r;
 }
@@ -1050,9 +937,6 @@ FanetRoutingProtocol::OnTopologyChange()
 int
 main(int argc, char* argv[])
 {
-    uint32_t nNodes = 10;
-    double simTime = 30.0;
-
     // 1. Logging Configuration
     LogComponentEnable("FanetCustomRouting", LOG_LEVEL_ALL);
     LogComponentEnable("UdpEchoClientApplication", LOG_LEVEL_INFO);
@@ -1060,26 +944,10 @@ main(int argc, char* argv[])
 
     // 2. Network Topology (3 Nodes for Step 3a)
     NodeContainer nodes;
-    nodes.Create(nNodes);
+    nodes.Create(3);
 
     MobilityHelper mobility;
-    
-    // Define the boundaries as a 3D Box (minX, maxX, minY, maxY, minZ, maxZ)
-    // Even for 2D, GaussMarkov usually expects a 3D Box.
-    Box areaBounds (0, 300, 0, 300, 0, 100); 
-
-    mobility.SetPositionAllocator("ns3::RandomRectanglePositionAllocator",
-        "X", StringValue("ns3::UniformRandomVariable[Min=0.0|Max=300.0]"),
-        "Y", StringValue("ns3::UniformRandomVariable[Min=0.0|Max=300.0]"));
-
-    mobility.SetMobilityModel("ns3::GaussMarkovMobilityModel",
-        "Bounds", BoxValue(areaBounds), // Using BoxValue instead of StringValue
-        "TimeStep", TimeValue(Seconds(0.5)),
-        "Alpha", DoubleValue(0.85),
-        "MeanVelocity", StringValue("ns3::UniformRandomVariable[Min=10.0|Max=30.0]"),
-        "MeanDirection", StringValue("ns3::UniformRandomVariable[Min=0|Max=6.28]"),
-        "MeanPitch", StringValue("ns3::UniformRandomVariable[Min=0.0|Max=0.0]"));
-    
+    mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
     mobility.Install(nodes);
 
     // 3. WiFi Physical & MAC Layer
@@ -1121,30 +989,41 @@ main(int argc, char* argv[])
     serverApps.Start(Seconds(0.4));
     serverApps.Stop(Seconds(5.0));
 
-    // Multiple Clients (Nodes 0, 1, 2) sending to Node 9
-    // This creates a "Convergecast" pattern common in drone monitoring
-    for (uint32_t i = 0; i < 3; ++i) {
-        UdpEchoClientHelper client(interfaces.GetAddress(nNodes - 1), port);
-        client.SetAttribute("MaxPackets", UintegerValue(1000)); // Continuous
-        client.SetAttribute("Interval", TimeValue(Seconds(0.2))); // 5 packets per sec
-        client.SetAttribute("PacketSize", UintegerValue(512));
+    // --- Clients on Node 0 ---
 
-        ApplicationContainer clientApp = client.Install(nodes.Get(i));
-        clientApp.Start(Seconds(2.0 + i)); // Staggered start
-        clientApp.Stop(Seconds(simTime));
-    }
+    // Client A: Node 0 -> Node 1 (10.1.1.2)
+    UdpEchoClientHelper echoClient1(interfaces.GetAddress(1), port);
+    echoClient1.SetAttribute("MaxPackets", UintegerValue(1));
+    echoClient1.SetAttribute("Interval", TimeValue(Seconds(0.1)));
+    echoClient1.SetAttribute("PacketSize", UintegerValue(64));
+
+    ApplicationContainer clientApps1 = echoClient1.Install(nodes.Get(0));
+    clientApps1.Start(Seconds(3));
+    clientApps1.Stop(Seconds(5.0));
+
+    // Client B: Node 0 -> Node 2 (10.1.1.3)
+    UdpEchoClientHelper echoClient2(interfaces.GetAddress(2), port);
+    echoClient2.SetAttribute("MaxPackets", UintegerValue(1));
+    echoClient2.SetAttribute("Interval", TimeValue(Seconds(0.1)));
+    echoClient2.SetAttribute("PacketSize", UintegerValue(64));
+
+    ApplicationContainer clientApps2 = echoClient2.Install(nodes.Get(0));
+    clientApps2.Start(Seconds(3.1)); // Staggered start time
+    clientApps2.Stop(Seconds(5.0));
 
     // 6. NetAnim Configuration
     AnimationInterface anim("xml/fanet-custom.xml");
-    Ptr<OutputStreamWrapper> routingStream = Create<OutputStreamWrapper>(&std::cout);
-    
-    // Schedule periodic table prints to see Q-learning updates
-    for (double t = 1.0; t < simTime; t += 5.0) {
-        fanetHelper.PrintRoutingTableAllAt(Seconds(t), routingStream);
+    anim.SetMobilityPollInterval(Seconds(0.5));
+    anim.EnablePacketMetadata(true);
+
+    for (uint32_t i = 0; i < nodes.GetN(); ++i)
+    {
+        anim.UpdateNodeDescription(nodes.Get(i), "UAV-" + std::to_string(i));
+        anim.UpdateNodeColor(nodes.Get(i), 0, 255, 0);
     }
 
     // 7. Simulation Run
-    Simulator::Stop(Seconds(30.0));
+    Simulator::Stop(Seconds(5.0));
     Simulator::Run();
     Simulator::Destroy();
     return 0;
