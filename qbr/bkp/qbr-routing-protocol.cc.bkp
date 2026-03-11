@@ -1,0 +1,1377 @@
+///
+/// @file qbr-routing-protocol.cc
+/// @brief Glue implementation for RoutingProtocol.
+///
+/// This file contains only the code that is genuinely "cross-cutting"
+/// across all three sub-components (RoutingTable, TupleManager,
+/// MessageHandler):
+///
+///   • GetTypeId / constructor / destructor
+///   • SetIpv4, DoInitialize, DoDispose
+///   • Periodic timer expire handlers (Hello/Tc/Mid/Hna)
+///   • RouteOutput, RouteInput, PrintRoutingTable
+///   • MprComputation, RoutingTableComputation
+///   • Public query accessors (GetMprSet, GetNeighbors, …)
+///   • HNA management (AddHostNetworkAssociation, …)
+///   • IsMyOwnAddress, GetMainAddress, Degree, Dump
+///
+
+#define NS_LOG_APPEND_CONTEXT                                                                      \
+    if (GetObject<Node>())                                                                         \
+    {                                                                                              \
+        std::clog << "[node " << GetObject<Node>()->GetId() << "] ";                               \
+    }
+
+#include "qbr-routing-protocol.h"
+
+#include "qbr-repositories.h"
+
+#include "ns3/boolean.h"
+#include "ns3/enum.h"
+#include "ns3/inet-socket-address.h"
+#include "ns3/ipv4-header.h"
+#include "ns3/ipv4-packet-info-tag.h"
+#include "ns3/ipv4-route.h"
+#include "ns3/ipv4-routing-table-entry.h"
+#include "ns3/log.h"
+#include "ns3/names.h"
+#include "ns3/simulator.h"
+#include "ns3/socket-factory.h"
+#include "ns3/trace-source-accessor.h"
+#include "ns3/udp-socket-factory.h"
+#include "ns3/uinteger.h"
+
+#include <iomanip>
+#include <iostream>
+
+// -----------------------------------------------------------------------
+// Convenience macros (mirrors the originals)
+// -----------------------------------------------------------------------
+
+#define DELAY(time)                                                                                \
+    (((time) < (Simulator::Now())) ? Seconds(0.000001)                                             \
+                                   : (time - Simulator::Now() + Seconds(0.000001)))
+
+#define QBR_REFRESH_INTERVAL m_helloInterval
+#define QBR_NEIGHB_HOLD_TIME Time(3 * QBR_REFRESH_INTERVAL)
+#define QBR_TOP_HOLD_TIME Time(3 * m_tcInterval)
+#define QBR_DUP_HOLD_TIME Seconds(30)
+#define QBR_MID_HOLD_TIME Time(3 * m_midInterval)
+#define QBR_HNA_HOLD_TIME Time(3 * m_hnaInterval)
+
+#define QBR_MAXJITTER (m_helloInterval.GetSeconds() / 4)
+#define QBR_MAX_SEQ_NUM 65535
+#define JITTER (Seconds(m_uniformRandomVariable->GetValue(0, QBR_MAXJITTER)))
+
+namespace ns3
+{
+
+NS_LOG_COMPONENT_DEFINE("QbrRoutingProtocol");
+
+namespace qbr
+{
+
+// -----------------------------------------------------------------------
+// Local enum definitions (only used in this TU)
+// -----------------------------------------------------------------------
+
+enum class LinkType : uint8_t
+{
+    UNSPEC_LINK = 0,
+    ASYM_LINK = 1,
+    SYM_LINK = 2,
+    LOST_LINK = 3,
+};
+
+enum class NeighborType : uint8_t
+{
+    NOT_NEIGH = 0,
+    SYM_NEIGH = 1,
+    MPR_NEIGH = 2,
+};
+
+// -----------------------------------------------------------------------
+// ns-3 boilerplate
+// -----------------------------------------------------------------------
+
+NS_OBJECT_ENSURE_REGISTERED(RoutingProtocol);
+
+const uint16_t RoutingProtocol::QBR_PORT_NUMBER = 9900;
+
+TypeId
+RoutingProtocol::GetTypeId()
+{
+    static TypeId tid =
+        TypeId("ns3::qbr::RoutingProtocol")
+            .SetParent<Ipv4RoutingProtocol>()
+            .SetGroupName("Qbr")
+            .AddConstructor<RoutingProtocol>()
+            .AddAttribute("HelloInterval",
+                          "HELLO messages emission interval.",
+                          TimeValue(Seconds(2)),
+                          MakeTimeAccessor(&RoutingProtocol::m_helloInterval),
+                          MakeTimeChecker())
+            .AddAttribute("TcInterval",
+                          "TC messages emission interval.",
+                          TimeValue(Seconds(5)),
+                          MakeTimeAccessor(&RoutingProtocol::m_tcInterval),
+                          MakeTimeChecker())
+            .AddAttribute("MidInterval",
+                          "MID messages emission interval.",
+                          TimeValue(Seconds(5)),
+                          MakeTimeAccessor(&RoutingProtocol::m_midInterval),
+                          MakeTimeChecker())
+            .AddAttribute("HnaInterval",
+                          "HNA messages emission interval.",
+                          TimeValue(Seconds(5)),
+                          MakeTimeAccessor(&RoutingProtocol::m_hnaInterval),
+                          MakeTimeChecker())
+            .AddAttribute("Willingness",
+                          "Willingness of a node to carry and forward traffic.",
+                          EnumValue(Willingness::DEFAULT),
+                          MakeEnumAccessor<Willingness>(&RoutingProtocol::m_willingness),
+                          MakeEnumChecker(Willingness::NEVER,
+                                          "never",
+                                          Willingness::LOW,
+                                          "low",
+                                          Willingness::DEFAULT,
+                                          "default",
+                                          Willingness::HIGH,
+                                          "high",
+                                          Willingness::ALWAYS,
+                                          "always"))
+            // Trace sources forward from the MessageHandler member.
+            .AddTraceSource("Rx",
+                            "Receive QBR packet.",
+                            MakeTraceSourceAccessor(&RoutingProtocol::m_rxPacketTrace),
+                            "ns3::qbr::RoutingProtocol::PacketTxRxTracedCallback")
+            .AddTraceSource("Tx",
+                            "Send QBR packet.",
+                            MakeTraceSourceAccessor(&RoutingProtocol::m_txPacketTrace),
+                            "ns3::qbr::RoutingProtocol::PacketTxRxTracedCallback")
+            .AddTraceSource("RoutingTableChanged",
+                            "The QBR routing table has changed.",
+                            MakeTraceSourceAccessor(&RoutingProtocol::m_routingTableChanged),
+                            "ns3::qbr::RoutingProtocol::TableChangeTracedCallback");
+    return tid;
+}
+
+// -----------------------------------------------------------------------
+// Construction / destruction
+// -----------------------------------------------------------------------
+
+RoutingProtocol::RoutingProtocol()
+    : m_state(),
+      m_routingTable(),
+      m_tupleManager(m_state),
+      m_messageHandler(),
+      m_helloTimer(Timer::CANCEL_ON_DESTROY),
+      m_tcTimer(Timer::CANCEL_ON_DESTROY),
+      m_midTimer(Timer::CANCEL_ON_DESTROY),
+      m_hnaTimer(Timer::CANCEL_ON_DESTROY),
+      m_ipv4(nullptr)
+{
+    m_uniformRandomVariable = CreateObject<UniformRandomVariable>();
+
+    // Create the HNA table and hand ownership to RoutingTable immediately.
+    m_routingTable.SetHnaRoutingTable(CreateObject<Ipv4StaticRouting>());
+
+    // Ipv4 is not available yet; SetIpv4() will fill this in.
+    m_routingTable.SetIpv4(nullptr);
+}
+
+RoutingProtocol::~RoutingProtocol()
+{
+}
+
+// -----------------------------------------------------------------------
+// SetIpv4 — wire everything up
+// -----------------------------------------------------------------------
+
+void
+RoutingProtocol::SetIpv4(Ptr<Ipv4> ipv4)
+{
+    NS_ASSERT(ipv4);
+    NS_ASSERT(!m_ipv4);
+    NS_LOG_DEBUG("Created qbr::RoutingProtocol");
+
+    m_ipv4 = ipv4;
+    m_routingTable.GetHnaRoutingTable()->SetIpv4(ipv4);
+
+    // ---- RoutingTable ----
+    m_routingTable.SetIpv4(ipv4);
+    // HnaRoutingTable was already given to RoutingTable in the constructor.
+
+    // ---- TupleManager wiring ----
+    m_tupleManager.SetNode(GetObject<Node>());
+    m_tupleManager.SetMainAddress(m_mainAddress); // updated again in DoInitialize
+    m_tupleManager.SetNeighborLossCallback([this]() {
+        MprComputation();
+        RoutingTableComputation();
+    });
+
+    // ---- MessageHandler wiring ----
+    m_messageHandler.SetNode(GetObject<Node>());
+    m_messageHandler.SetMainAddress(m_mainAddress);
+    m_messageHandler.SetState(&m_state);
+    m_messageHandler.SetIpv4(ipv4);
+    m_messageHandler.SetInterfaceExclusions(&m_interfaceExclusions);
+    m_messageHandler.SetWillingness(m_willingness);
+    m_messageHandler.SetHelloInterval(m_helloInterval);
+    m_messageHandler.SetNeighHoldTime(QBR_NEIGHB_HOLD_TIME);
+    m_messageHandler.SetTopHoldTime(QBR_TOP_HOLD_TIME);
+    m_messageHandler.SetMidHoldTime(QBR_MID_HOLD_TIME);
+    m_messageHandler.SetHnaHoldTime(QBR_HNA_HOLD_TIME);
+    m_messageHandler.SetPortNumber(QBR_PORT_NUMBER);
+    m_messageHandler.SetJitterCallback([this]() { return JITTER; });
+    m_messageHandler.SetGetAnsnCallback([this]() { return m_tupleManager.GetAnsn(); });
+
+    // Forward Tx/Rx traces: MessageHandler fires these callbacks, which in turn
+    // invoke the TracedCallbacks on RoutingProtocol so ns-3's trace system works.
+    m_messageHandler.SetRxTraceCallback(
+        [this](const PacketHeader& h, const MessageList& m) { m_rxPacketTrace(h, m); });
+    m_messageHandler.SetTxTraceCallback(
+        [this](const PacketHeader& h, const MessageList& m) { m_txPacketTrace(h, m); });
+
+    // Periodic-timer handlers
+    m_messageHandler.SetRoutingTableComputationCallback([this]() { RoutingTableComputation(); });
+    m_messageHandler.SetMprComputationCallback([this]() { MprComputation(); });
+
+    // Tuple-mutation forwarding  (MessageHandler → TupleManager)
+    m_messageHandler.SetAddDuplicateTupleCallback(
+        [this](const DuplicateTuple& t) { m_tupleManager.AddDuplicateTuple(t); });
+    m_messageHandler.SetAddTopologyTupleCallback(
+        [this](const TopologyTuple& t) { m_tupleManager.AddTopologyTuple(t); });
+    m_messageHandler.SetAddIfaceAssocTupleCallback(
+        [this](const IfaceAssocTuple& t) { m_tupleManager.AddIfaceAssocTuple(t); });
+    m_messageHandler.SetAddAssociationTupleCallback(
+        [this](const AssociationTuple& t) { m_tupleManager.AddAssociationTuple(t); });
+    m_messageHandler.SetAddTwoHopNeighborTupleCallback(
+        [this](const TwoHopNeighborTuple& t) { m_tupleManager.AddTwoHopNeighborTuple(t); });
+    m_messageHandler.SetAddMprSelectorTupleCallback(
+        [this](const MprSelectorTuple& t) { m_tupleManager.AddMprSelectorTuple(t); });
+    m_messageHandler.SetLinkTupleAddedCallback(
+        [this](const LinkTuple& t, Willingness w) { m_tupleManager.LinkTupleAdded(t, w); });
+    m_messageHandler.SetLinkTupleUpdatedCallback(
+        [this](const LinkTuple& t, Willingness w) { m_tupleManager.LinkTupleUpdated(t, w); });
+
+    // Timer-scheduling forwarding (MessageHandler → m_events / TupleManager)
+    m_messageHandler.SetScheduleDupExpireCallback(
+        [this](Ipv4Address addr, uint16_t seq, Time delay) {
+            m_events.Track(Simulator::Schedule(delay,
+                                               &TupleManager::DupTupleTimerExpire,
+                                               &m_tupleManager,
+                                               addr,
+                                               seq));
+        });
+    m_messageHandler.SetScheduleTopologyExpireCallback(
+        [this](Ipv4Address dest, Ipv4Address last, Time delay) {
+            m_events.Track(Simulator::Schedule(delay,
+                                               &TupleManager::TopologyTupleTimerExpire,
+                                               &m_tupleManager,
+                                               dest,
+                                               last));
+        });
+    m_messageHandler.SetScheduleIfaceAssocExpireCallback([this](Ipv4Address iface, Time delay) {
+        m_events.Track(Simulator::Schedule(delay,
+                                           &TupleManager::IfaceAssocTupleTimerExpire,
+                                           &m_tupleManager,
+                                           iface));
+    });
+    m_messageHandler.SetScheduleAssocExpireCallback(
+        [this](Ipv4Address gw, Ipv4Address net, Ipv4Mask mask, Time delay) {
+            m_events.Track(Simulator::Schedule(delay,
+                                               &TupleManager::AssociationTupleTimerExpire,
+                                               &m_tupleManager,
+                                               gw,
+                                               net,
+                                               mask));
+        });
+    m_messageHandler.SetScheduleNb2hopExpireCallback(
+        [this](Ipv4Address nbMain, Ipv4Address twoHop, Time delay) {
+            m_events.Track(Simulator::Schedule(delay,
+                                               &TupleManager::Nb2hopTupleTimerExpire,
+                                               &m_tupleManager,
+                                               nbMain,
+                                               twoHop));
+        });
+    m_messageHandler.SetScheduleMprSelExpireCallback([this](Ipv4Address main, Time delay) {
+        m_events.Track(Simulator::Schedule(delay,
+                                           &TupleManager::MprSelTupleTimerExpire,
+                                           &m_tupleManager,
+                                           main));
+    });
+    m_messageHandler.SetScheduleLinkTupleExpireCallback([this](Ipv4Address nbIface, Time delay) {
+        m_events.Track(Simulator::Schedule(delay,
+                                           &TupleManager::LinkTupleTimerExpire,
+                                           &m_tupleManager,
+                                           nbIface));
+    });
+
+    // Timer setup
+    m_helloTimer.SetFunction(&RoutingProtocol::HelloTimerExpire, this);
+    m_tcTimer.SetFunction(&RoutingProtocol::TcTimerExpire, this);
+    m_midTimer.SetFunction(&RoutingProtocol::MidTimerExpire, this);
+    m_hnaTimer.SetFunction(&RoutingProtocol::HnaTimerExpire, this);
+
+    // Sequence-number counters: initialise in MessageHandler via wired
+    // state; the original code also reset m_ansn here.
+    m_tupleManager.ResetAnsn(QBR_MAX_SEQ_NUM);
+}
+
+void
+RoutingProtocol::DoDispose()
+{
+    m_ipv4 = nullptr;
+
+    // Release the two Ipv4StaticRouting objects owned by RoutingTable.
+    m_routingTable.DisposeStaticRoutes();
+
+    auto& recvSock = m_messageHandler.m_recvSocket;
+    if (recvSock)
+    {
+        recvSock->Close();
+        recvSock = nullptr;
+    }
+    for (auto& [sock, _] : m_messageHandler.m_sendSockets)
+    {
+        sock->Close();
+    }
+    m_messageHandler.m_sendSockets.clear();
+    m_routingTable.Clear();
+
+    Ipv4RoutingProtocol::DoDispose();
+}
+
+void
+RoutingProtocol::DoInitialize()
+{
+    if (m_mainAddress == Ipv4Address())
+    {
+        Ipv4Address loopback("127.0.0.1");
+        for (uint32_t i = 0; i < m_ipv4->GetNInterfaces(); i++)
+        {
+            Ipv4Address addr = m_ipv4->GetAddress(i, 0).GetLocal();
+            if (addr != loopback)
+            {
+                m_mainAddress = addr;
+                break;
+            }
+        }
+        NS_ASSERT(m_mainAddress != Ipv4Address());
+    }
+
+    // Propagate main address to sub-components now that it is known.
+    m_tupleManager.SetMainAddress(m_mainAddress);
+    m_messageHandler.SetMainAddress(m_mainAddress);
+
+    NS_LOG_DEBUG("Starting QBR on node " << m_mainAddress);
+
+    Ipv4Address loopback("127.0.0.1");
+    bool canRunQbr = false;
+
+    for (uint32_t i = 0; i < m_ipv4->GetNInterfaces(); i++)
+    {
+        Ipv4Address addr = m_ipv4->GetAddress(i, 0).GetLocal();
+        if (addr == loopback)
+        {
+            continue;
+        }
+
+        if (addr != m_mainAddress)
+        {
+            IfaceAssocTuple tuple;
+            tuple.ifaceAddr = addr;
+            tuple.mainAddr = m_mainAddress;
+            m_tupleManager.AddIfaceAssocTuple(tuple);
+            NS_ASSERT(GetMainAddress(addr) == m_mainAddress);
+        }
+
+        if (m_interfaceExclusions.count(i))
+        {
+            continue;
+        }
+
+        // Receive socket (shared across all interfaces)
+        auto& recvSock = m_messageHandler.m_recvSocket;
+        if (!recvSock)
+        {
+            recvSock = Socket::CreateSocket(GetObject<Node>(), UdpSocketFactory::GetTypeId());
+            recvSock->SetAllowBroadcast(true);
+            InetSocketAddress inetAddr(Ipv4Address::GetAny(), QBR_PORT_NUMBER);
+            recvSock->SetRecvCallback(MakeCallback(&MessageHandler::RecvQbr, &m_messageHandler));
+            if (recvSock->Bind(inetAddr))
+            {
+                NS_FATAL_ERROR("Failed to bind() QBR recv socket");
+            }
+            recvSock->SetRecvPktInfo(true);
+            recvSock->ShutdownSend();
+        }
+
+        // Per-interface send socket
+        Ptr<Socket> socket = Socket::CreateSocket(GetObject<Node>(), UdpSocketFactory::GetTypeId());
+        socket->SetAllowBroadcast(true);
+        socket->SetIpTtl(1);
+        InetSocketAddress inetAddr(m_ipv4->GetAddress(i, 0).GetLocal(), QBR_PORT_NUMBER);
+        socket->SetRecvCallback(MakeCallback(&MessageHandler::RecvQbr, &m_messageHandler));
+        socket->BindToNetDevice(m_ipv4->GetNetDevice(i));
+        if (socket->Bind(inetAddr))
+        {
+            NS_FATAL_ERROR("Failed to bind() QBR send socket");
+        }
+        socket->SetRecvPktInfo(true);
+        m_messageHandler.m_sendSockets[socket] = m_ipv4->GetAddress(i, 0);
+        canRunQbr = true;
+    }
+
+    if (canRunQbr)
+    {
+        // Schedule timers, don’t call Expire() directly
+        m_helloTimer.Schedule(JITTER); // small random jitter
+        m_tcTimer.Schedule(m_tcInterval);
+        m_midTimer.Schedule(m_midInterval);
+        m_hnaTimer.Schedule(m_hnaInterval);
+        NS_LOG_DEBUG("QBR on node " << m_mainAddress << " started");
+    }
+}
+
+// -----------------------------------------------------------------------
+// Periodic timer handlers
+// -----------------------------------------------------------------------
+
+void
+RoutingProtocol::HelloTimerExpire()
+{
+    m_messageHandler.SendHello();
+    m_helloTimer.Schedule(m_helloInterval);
+}
+
+void
+RoutingProtocol::TcTimerExpire()
+{
+    if (!m_state.GetMprSelectors().empty())
+    {
+        m_messageHandler.SendTc();
+    }
+    else
+    {
+        NS_LOG_DEBUG("Not sending any TC, no one selected me as MPR.");
+    }
+    m_tcTimer.Schedule(m_tcInterval);
+}
+
+void
+RoutingProtocol::MidTimerExpire()
+{
+    m_messageHandler.SendMid();
+    m_midTimer.Schedule(m_midInterval);
+}
+
+void
+RoutingProtocol::HnaTimerExpire()
+{
+    if (!m_state.GetAssociations().empty())
+    {
+        m_messageHandler.SendHna();
+    }
+    else
+    {
+        NS_LOG_DEBUG("Not sending any HNA, no associations to advertise.");
+    }
+    m_hnaTimer.Schedule(m_hnaInterval);
+}
+
+// -----------------------------------------------------------------------
+// Q-Learning
+// -----------------------------------------------------------------------
+
+std::vector<Ipv4Address>
+RoutingProtocol::GetAvailableActions()
+{
+    std::vector<Ipv4Address> actions;
+
+    for (const auto& nb : m_state.GetNeighbors())
+    {
+        if (nb.status == NeighborTuple::STATUS_SYM)
+        {
+            actions.push_back(nb.neighborMainAddr);
+        }
+    }
+
+    return actions;
+}
+
+void
+RoutingProtocol::InitializeQEntries(Ipv4Address destination)
+{
+    auto actions = GetAvailableActions();
+
+    for (auto neighbor : actions)
+    {
+        QuantileValue q;
+
+        if (!m_qTable.GetEntry(destination, neighbor, q))
+        {
+            QuantileValue init;
+            init.quantiles.fill(0.0);
+
+            m_qTable.SetEntry(destination, neighbor, init);
+        }
+    }
+}
+
+std::array<double, QBR_NUM_QUANTILES>
+RoutingProtocol::BuildQrDqnTarget(const Ipv4Address& nextState, double reward, double gamma)
+{
+    std::array<double, QBR_NUM_QUANTILES> target;
+    target.fill(reward);
+
+    Ipv4Address bestAction;
+
+    if (!m_qTable.GetBestAction(nextState, bestAction))
+    {
+        return target; // terminal state
+    }
+
+    QuantileValue nextDistribution;
+
+    if (!m_qTable.GetEntry(nextState, bestAction, nextDistribution))
+    {
+        return target;
+    }
+
+    for (uint32_t i = 0; i < QBR_NUM_QUANTILES; ++i)
+    {
+        target[i] = reward + gamma * nextDistribution.quantiles[i];
+    }
+
+    return target;
+}
+
+void
+RoutingProtocol::UpdateLearning(Ipv4Address state,
+                                Ipv4Address action,
+                                Ipv4Address nextState,
+                                double reward)
+{
+    auto target = BuildQrDqnTarget(nextState, reward, m_gamma);
+
+    m_qTable.UpdateQuantiles(state, action, target, m_learningRate);
+
+    /* decay exploration */
+
+    m_epsilon = std::max(0.01, m_epsilon * 0.999);
+}
+
+// -----------------------------------------------------------------------
+// Ipv4RoutingProtocol interface
+// -----------------------------------------------------------------------
+
+void
+RoutingProtocol::PrintRoutingTable(Ptr<OutputStreamWrapper> stream, Time::Unit unit) const
+{
+    std::ostream* os = stream->GetStream();
+    std::ios savedState(nullptr);
+    savedState.copyfmt(*os);
+    *os << std::resetiosflags(std::ios::adjustfield) << std::setiosflags(std::ios::left);
+    *os << "Node: " << m_ipv4->GetObject<Node>()->GetId() << ", Time: " << Now().As(unit)
+        << ", Local time: " << m_ipv4->GetObject<Node>()->GetLocalTime().As(unit)
+        << ", QBR Routing table" << std::endl;
+
+    m_routingTable.Print(stream, unit);
+
+    Ptr<const Ipv4StaticRouting> hna = m_routingTable.GetHnaRoutingTableConst();
+    if (hna && hna->GetNRoutes() > 0)
+    {
+        *os << "HNA Routing Table:" << std::endl;
+        hna->PrintRoutingTable(stream, unit);
+    }
+    else
+    {
+        *os << "HNA Routing Table: empty" << std::endl << std::endl;
+    }
+    (*os).copyfmt(savedState);
+}
+
+Ptr<Ipv4Route>
+RoutingProtocol::RouteOutput(Ptr<Packet> p,
+                             const Ipv4Header& header,
+                             Ptr<NetDevice> oif,
+                             Socket::SocketErrno& sockerr)
+{
+    NS_LOG_FUNCTION(this << " " << m_ipv4->GetObject<Node>()->GetId() << " "
+                         << header.GetDestination() << " " << oif);
+
+    Ptr<Ipv4Route> rtentry;
+    RoutingTableEntry entry1;
+    RoutingTableEntry entry2;
+
+    if (m_routingTable.Lookup(header.GetDestination(), entry1))
+    {
+        if (!m_routingTable.FindSendEntry(entry1, entry2))
+        {
+            NS_FATAL_ERROR("FindSendEntry failure");
+        }
+
+        Ipv4Address destination = header.GetDestination();
+
+        InitializeQEntries(destination);
+
+        Ipv4Address nextHop;
+        bool found = false;
+
+        /* epsilon-greedy action selection */
+
+        double r = m_uniformRandomVariable->GetValue();
+
+        if (r < m_epsilon)
+        {
+            auto actions = m_qTable.GetActions(destination);
+
+            if (!actions.empty())
+            {
+                uint32_t idx = m_uniformRandomVariable->GetInteger(0, actions.size() - 1);
+                nextHop = actions.at(idx);
+                found = true;
+            }
+        }
+        else
+        {
+            found = m_qTable.GetBestAction(destination, nextHop);
+        }
+
+        /* fallback to classical routing if RL not ready */
+
+        if (!found)
+        {
+            if (!m_routingTable.Lookup(destination, entry1))
+            {
+                sockerr = Socket::ERROR_NOROUTETOHOST;
+                return nullptr;
+            }
+
+            if (!m_routingTable.FindSendEntry(entry1, entry2))
+            {
+                NS_FATAL_ERROR("FindSendEntry failure");
+            }
+
+            nextHop = entry2.nextAddr;
+        }
+
+        /* obtain interface from routing table */
+
+        if (!m_routingTable.Lookup(nextHop, entry1))
+        {
+            sockerr = Socket::ERROR_NOROUTETOHOST;
+            return nullptr;
+        }
+
+        if (!m_routingTable.FindSendEntry(entry1, entry2))
+        {
+            NS_FATAL_ERROR("FindSendEntry failure");
+        }
+
+        uint32_t interfaceIdx = entry2.interface;
+
+        rtentry = Create<Ipv4Route>();
+
+        rtentry->SetDestination(destination);
+        rtentry->SetGateway(nextHop);
+        rtentry->SetOutputDevice(m_ipv4->GetNetDevice(interfaceIdx));
+        rtentry->SetSource(m_ipv4->GetAddress(interfaceIdx, 0).GetLocal());
+
+        sockerr = Socket::ERROR_NOTERROR;
+
+        NS_LOG_DEBUG("QBR node " << m_mainAddress
+                                 << ": RouteOutput for dest=" << header.GetDestination()
+                                 << " --> nextHop=" << nextHop << " interface=" << interfaceIdx);
+    }
+    else
+    {
+        rtentry = m_routingTable.GetHnaRoutingTable()->RouteOutput(p, header, oif, sockerr);
+        if (!rtentry)
+        {
+            NS_LOG_DEBUG("QBR node " << m_mainAddress << ": RouteOutput for dest="
+                                     << header.GetDestination() << " No route to host");
+            sockerr = Socket::ERROR_NOROUTETOHOST;
+        }
+    }
+    return rtentry;
+}
+
+bool
+RoutingProtocol::RouteInput(Ptr<const Packet> p,
+                            const Ipv4Header& header,
+                            Ptr<const NetDevice> idev,
+                            const UnicastForwardCallback& ucb,
+                            const MulticastForwardCallback& mcb,
+                            const LocalDeliverCallback& lcb,
+                            const ErrorCallback& ecb)
+{
+    NS_LOG_FUNCTION(this << " " << m_ipv4->GetObject<Node>()->GetId() << " "
+                         << header.GetDestination());
+
+    Ipv4Address dst = header.GetDestination();
+    Ipv4Address origin = header.GetSource();
+
+    if (IsMyOwnAddress(origin))
+    {
+        return true;
+    }
+
+    NS_ASSERT(m_ipv4->GetInterfaceForDevice(idev) >= 0);
+    uint32_t iif = m_ipv4->GetInterfaceForDevice(idev);
+
+    if (m_ipv4->IsDestinationAddress(dst, iif))
+    {
+        if (!lcb.IsNull())
+        {
+            NS_LOG_LOGIC("Local delivery to " << dst);
+            lcb(p, header, iif);
+            return true;
+        }
+        else
+        {
+            NS_LOG_LOGIC("Null local delivery callback");
+            return false;
+        }
+    }
+
+    RoutingTableEntry entry1;
+    RoutingTableEntry entry2;
+    if (m_routingTable.Lookup(header.GetDestination(), entry1))
+    {
+        if (!m_routingTable.FindSendEntry(entry1, entry2))
+        {
+            NS_FATAL_ERROR("FindSendEntry failure");
+        }
+        uint32_t interfaceIdx = entry2.interface;
+        Ptr<Ipv4Route> rtentry = Create<Ipv4Route>();
+        rtentry->SetDestination(header.GetDestination());
+        NS_ASSERT(m_ipv4->GetNAddresses(interfaceIdx) > 0);
+        if (m_ipv4->GetNAddresses(interfaceIdx) > 1)
+        {
+            NS_FATAL_ERROR("XXX Not implemented yet:  IP aliasing and QBR");
+        }
+        rtentry->SetSource(m_ipv4->GetAddress(interfaceIdx, 0).GetLocal());
+        rtentry->SetGateway(entry2.nextAddr);
+        rtentry->SetOutputDevice(m_ipv4->GetNetDevice(interfaceIdx));
+        NS_LOG_DEBUG("QBR node " << m_mainAddress << ": RouteInput for dest="
+                                 << header.GetDestination() << " --> nextHop=" << entry2.nextAddr
+                                 << " interface=" << entry2.interface);
+        ucb(rtentry, p, header);
+
+        /* Q-learning update */
+        Ipv4Address state = header.GetDestination();
+        Ipv4Address action = entry2.nextAddr;
+        Ipv4Address nextState = header.GetDestination();
+
+        /* simple reward: successful forwarding */
+
+        double reward = 1.0;
+
+        UpdateLearning(state, action, nextState, reward);
+
+        return true;
+    }
+
+    NS_LOG_LOGIC("No dynamic route, check network routes");
+    if (m_routingTable.GetHnaRoutingTable()->RouteInput(p, header, idev, ucb, mcb, lcb, ecb))
+    {
+        return true;
+    }
+
+#ifdef NS3_LOG_ENABLE
+    NS_LOG_DEBUG("QBR node " << m_mainAddress << ": RouteInput for dest=" << header.GetDestination()
+                             << " --> NOT FOUND; dumping table...");
+    for (const auto& [dest, entry] : m_routingTable.GetTableRef())
+    {
+        NS_LOG_DEBUG("dest=" << dest << " --> next=" << entry.nextAddr << " via interface "
+                             << entry.interface);
+    }
+#endif
+    /* negative reward */
+
+    Ipv4Address state = dst;
+    Ipv4Address nextState = dst;
+
+    double reward = -1.0;
+
+    Ipv4Address action;
+    if (m_qTable.GetBestAction(state, action))
+    {
+        UpdateLearning(state, action, nextState, reward);
+    }
+
+    return false;
+}
+
+void
+RoutingProtocol::NotifyInterfaceUp(uint32_t)
+{
+}
+
+void
+RoutingProtocol::NotifyInterfaceDown(uint32_t)
+{
+}
+
+void
+RoutingProtocol::NotifyAddAddress(uint32_t, Ipv4InterfaceAddress)
+{
+}
+
+void
+RoutingProtocol::NotifyRemoveAddress(uint32_t, Ipv4InterfaceAddress)
+{
+}
+
+// -----------------------------------------------------------------------
+// MPR computation  (RFC 3626 §8.3)
+// -----------------------------------------------------------------------
+
+namespace
+{
+void
+CoverTwoHopNeighbors(Ipv4Address neighborMainAddr, TwoHopNeighborSet& N2)
+{
+    std::set<Ipv4Address> toRemove;
+    for (const auto& t : N2)
+    {
+        if (t.neighborMainAddr == neighborMainAddr)
+        {
+            toRemove.insert(t.twoHopNeighborAddr);
+        }
+    }
+    for (auto it = N2.begin(); it != N2.end();)
+    {
+        it = toRemove.count(it->twoHopNeighborAddr) ? N2.erase(it) : std::next(it);
+    }
+}
+} // unnamed namespace
+
+void
+RoutingProtocol::MprComputation()
+{
+    NS_LOG_FUNCTION(this);
+
+    MprSet mprSet;
+
+    NeighborSet N;
+    for (const auto& nb : m_state.GetNeighbors())
+    {
+        if (nb.status == NeighborTuple::STATUS_SYM)
+        {
+            N.push_back(nb);
+        }
+    }
+
+    TwoHopNeighborSet N2;
+    for (const auto& twoHop : m_state.GetTwoHopNeighbors())
+    {
+        if (twoHop.twoHopNeighborAddr == m_mainAddress)
+        {
+            continue;
+        }
+        bool ok = false;
+        for (const auto& neigh : N)
+        {
+            if (neigh.neighborMainAddr == twoHop.neighborMainAddr)
+            {
+                ok = (neigh.willingness != Willingness::NEVER);
+                break;
+            }
+        }
+        if (!ok)
+        {
+            continue;
+        }
+        for (const auto& neigh : N)
+        {
+            if (neigh.neighborMainAddr == twoHop.twoHopNeighborAddr)
+            {
+                ok = false;
+                break;
+            }
+        }
+        if (ok)
+        {
+            N2.push_back(twoHop);
+        }
+    }
+
+    // Step 1: always-willing neighbors
+    for (const auto& neigh : N)
+    {
+        if (neigh.willingness == Willingness::ALWAYS)
+        {
+            mprSet.insert(neigh.neighborMainAddr);
+            CoverTwoHopNeighbors(neigh.neighborMainAddr, N2);
+        }
+    }
+
+    // Step 3: single-coverage nodes
+    std::set<Ipv4Address> covered;
+    for (const auto& twoHop : N2)
+    {
+        bool onlyOne = true;
+        for (const auto& other : N2)
+        {
+            if (other.twoHopNeighborAddr == twoHop.twoHopNeighborAddr &&
+                other.neighborMainAddr != twoHop.neighborMainAddr)
+            {
+                onlyOne = false;
+                break;
+            }
+        }
+        if (onlyOne)
+        {
+            mprSet.insert(twoHop.neighborMainAddr);
+            for (const auto& other : N2)
+            {
+                if (other.neighborMainAddr == twoHop.neighborMainAddr)
+                {
+                    covered.insert(other.twoHopNeighborAddr);
+                }
+            }
+        }
+    }
+    for (auto it = N2.begin(); it != N2.end();)
+    {
+        it = covered.count(it->twoHopNeighborAddr) ? N2.erase(it) : std::next(it);
+    }
+
+    // Step 4: greedy coverage
+    while (!N2.empty())
+    {
+        std::map<int, std::vector<const NeighborTuple*>> reachability;
+        std::set<int> rs;
+        for (const auto& nb : N)
+        {
+            int r = 0;
+            for (const auto& t2 : N2)
+            {
+                if (nb.neighborMainAddr == t2.neighborMainAddr)
+                {
+                    r++;
+                }
+            }
+            rs.insert(r);
+            reachability[r].push_back(&nb);
+        }
+
+        const NeighborTuple* best = nullptr;
+        int bestR = 0;
+        for (int r : rs)
+        {
+            if (r == 0)
+            {
+                continue;
+            }
+            for (const NeighborTuple* nb : reachability[r])
+            {
+                if (best == nullptr || nb->willingness > best->willingness)
+                {
+                    best = nb;
+                    bestR = r;
+                }
+                else if (nb->willingness == best->willingness)
+                {
+                    if (r > bestR || (r == bestR && Degree(*nb) > Degree(*best)))
+                    {
+                        best = nb;
+                        bestR = r;
+                    }
+                }
+            }
+        }
+        if (best != nullptr)
+        {
+            mprSet.insert(best->neighborMainAddr);
+            CoverTwoHopNeighbors(best->neighborMainAddr, N2);
+        }
+    }
+
+    m_state.SetMprSet(mprSet);
+}
+
+// -----------------------------------------------------------------------
+// Routing table computation  (RFC 3626 §10)
+// -----------------------------------------------------------------------
+
+void
+RoutingProtocol::RoutingTableComputation()
+{
+    NS_LOG_DEBUG(Simulator::Now().As(Time::S)
+                 << " : Node " << m_mainAddress << ": RoutingTableComputation begin...");
+
+    m_routingTable.Clear();
+
+    // h=1: symmetric neighbors
+    for (const auto& nb_tuple : m_state.GetNeighbors())
+    {
+        if (nb_tuple.status != NeighborTuple::STATUS_SYM)
+        {
+            continue;
+        }
+        bool nb_main_addr = false;
+        const LinkTuple* lt = nullptr;
+        for (const auto& link_tuple : m_state.GetLinks())
+        {
+            if (GetMainAddress(link_tuple.neighborIfaceAddr) == nb_tuple.neighborMainAddr &&
+                link_tuple.time >= Simulator::Now())
+            {
+                lt = &link_tuple;
+                m_routingTable.AddEntry(link_tuple.neighborIfaceAddr,
+                                        link_tuple.neighborIfaceAddr,
+                                        link_tuple.localIfaceAddr,
+                                        1);
+                if (link_tuple.neighborIfaceAddr == nb_tuple.neighborMainAddr)
+                {
+                    nb_main_addr = true;
+                }
+            }
+        }
+        if (!nb_main_addr && lt != nullptr)
+        {
+            m_routingTable.AddEntry(nb_tuple.neighborMainAddr,
+                                    lt->neighborIfaceAddr,
+                                    lt->localIfaceAddr,
+                                    1);
+        }
+    }
+
+    // h=2: two-hop neighbors
+    for (const auto& nb2hop : m_state.GetTwoHopNeighbors())
+    {
+        if (m_state.FindSymNeighborTuple(nb2hop.twoHopNeighborAddr) ||
+            nb2hop.twoHopNeighborAddr == m_mainAddress)
+        {
+            continue;
+        }
+        bool nb2hopOk = false;
+        for (const auto& nb : m_state.GetNeighbors())
+        {
+            if (nb.neighborMainAddr == nb2hop.neighborMainAddr &&
+                nb.willingness != Willingness::NEVER)
+            {
+                nb2hopOk = true;
+                break;
+            }
+        }
+        if (!nb2hopOk)
+        {
+            continue;
+        }
+        RoutingTableEntry entry;
+        if (m_routingTable.Lookup(nb2hop.neighborMainAddr, entry))
+        {
+            m_routingTable.AddEntry(nb2hop.twoHopNeighborAddr, entry.nextAddr, entry.interface, 2);
+        }
+    }
+
+    // h>=3: topology set
+    for (uint32_t h = 2;; h++)
+    {
+        bool added = false;
+        for (const auto& topo : m_state.GetTopologySet())
+        {
+            RoutingTableEntry destEntry;
+            RoutingTableEntry lastEntry;
+            bool have_dest = m_routingTable.Lookup(topo.destAddr, destEntry);
+            bool have_last = m_routingTable.Lookup(topo.lastAddr, lastEntry);
+            if (!have_dest && have_last && lastEntry.distance == h)
+            {
+                m_routingTable.AddEntry(topo.destAddr,
+                                        lastEntry.nextAddr,
+                                        lastEntry.interface,
+                                        h + 1);
+                added = true;
+            }
+        }
+        if (!added)
+        {
+            break;
+        }
+    }
+
+    // MID: add iface-address routes
+    for (const auto& ifaceAssoc : m_state.GetIfaceAssocSet())
+    {
+        RoutingTableEntry entry1;
+        RoutingTableEntry entry2;
+        if (m_routingTable.Lookup(ifaceAssoc.mainAddr, entry1) &&
+            !m_routingTable.Lookup(ifaceAssoc.ifaceAddr, entry2))
+        {
+            m_routingTable.AddEntry(ifaceAssoc.ifaceAddr,
+                                    entry1.nextAddr,
+                                    entry1.interface,
+                                    entry1.distance);
+        }
+    }
+
+    // HNA: build/replace HNA routing table
+    Ptr<Ipv4StaticRouting> hna = m_routingTable.GetHnaRoutingTable();
+    for (uint32_t i = 0; i < hna->GetNRoutes(); i++)
+    {
+        hna->RemoveRoute(0);
+    }
+    for (const auto& assocTuple : m_state.GetAssociationSet())
+    {
+        // Skip if we announce the same association ourselves
+        bool skip = false;
+        for (const auto& localAssoc : m_state.GetAssociations())
+        {
+            if (localAssoc.networkAddr == assocTuple.networkAddr &&
+                localAssoc.netmask == assocTuple.netmask)
+            {
+                skip = true;
+                break;
+            }
+        }
+        if (skip)
+        {
+            continue;
+        }
+
+        RoutingTableEntry gwEntry;
+        bool gwExists = m_routingTable.Lookup(assocTuple.gatewayAddr, gwEntry);
+
+        uint32_t routeIndex = 0;
+        for (; routeIndex < hna->GetNRoutes(); routeIndex++)
+        {
+            Ipv4RoutingTableEntry r = hna->GetRoute(routeIndex);
+            if (r.GetDestNetwork() == assocTuple.networkAddr &&
+                r.GetDestNetworkMask() == assocTuple.netmask)
+            {
+                break;
+            }
+        }
+
+        bool addRoute = (routeIndex == hna->GetNRoutes());
+        if (!addRoute && gwExists && hna->GetMetric(routeIndex) > gwEntry.distance)
+        {
+            hna->RemoveRoute(routeIndex);
+            addRoute = true;
+        }
+        if (addRoute && gwExists)
+        {
+            hna->AddNetworkRouteTo(assocTuple.networkAddr,
+                                   assocTuple.netmask,
+                                   gwEntry.nextAddr,
+                                   gwEntry.interface,
+                                   gwEntry.distance);
+        }
+    }
+
+    NS_LOG_DEBUG("Node " << m_mainAddress << ": RoutingTableComputation end.");
+    m_routingTableChanged(m_routingTable.GetSize());
+}
+
+// -----------------------------------------------------------------------
+// Public configuration API
+// -----------------------------------------------------------------------
+
+void
+RoutingProtocol::SetMainInterface(uint32_t interface)
+{
+    m_mainAddress = m_ipv4->GetAddress(interface, 0).GetLocal();
+}
+
+void
+RoutingProtocol::SetInterfaceExclusions(std::set<uint32_t> exceptions)
+{
+    m_interfaceExclusions = std::move(exceptions);
+}
+
+void
+RoutingProtocol::AddHostNetworkAssociation(Ipv4Address networkAddr, Ipv4Mask netmask)
+{
+    for (const auto& assoc : m_state.GetAssociations())
+    {
+        if (assoc.networkAddr == networkAddr && assoc.netmask == netmask)
+        {
+            NS_LOG_INFO("HNA association for network " << networkAddr << "/" << netmask
+                                                       << " already exists.");
+            return;
+        }
+    }
+    NS_LOG_INFO("Adding HNA association for network " << networkAddr << "/" << netmask << ".");
+    m_state.InsertAssociation(Association{networkAddr, netmask});
+}
+
+void
+RoutingProtocol::RemoveHostNetworkAssociation(Ipv4Address networkAddr, Ipv4Mask netmask)
+{
+    NS_LOG_INFO("Removing HNA association for network " << networkAddr << "/" << netmask << ".");
+    m_state.EraseAssociation(Association{networkAddr, netmask});
+}
+
+void
+RoutingProtocol::SetRoutingTableAssociation(Ptr<Ipv4StaticRouting> routingTable)
+{
+    // Swap returns the old association (may be null).
+    Ptr<Ipv4StaticRouting> old = m_routingTable.SwapRoutingTableAssociation(routingTable);
+
+    // Remove HNA entries that came from the old association table.
+    if (old)
+    {
+        for (uint32_t i = 0; i < old->GetNRoutes(); i++)
+        {
+            Ipv4RoutingTableEntry route = old->GetRoute(i);
+            if (UsesNonQbrOutgoingInterface(route))
+            {
+                RemoveHostNetworkAssociation(route.GetDestNetwork(), route.GetDestNetworkMask());
+            }
+        }
+    }
+
+    // Add HNA entries from the new association table.
+    for (uint32_t i = 0; i < routingTable->GetNRoutes(); i++)
+    {
+        Ipv4RoutingTableEntry route = routingTable->GetRoute(i);
+        if (UsesNonQbrOutgoingInterface(route))
+        {
+            AddHostNetworkAssociation(route.GetDestNetwork(), route.GetDestNetworkMask());
+        }
+    }
+}
+
+Ptr<const Ipv4StaticRouting>
+RoutingProtocol::GetRoutingTableAssociation() const
+{
+    // Mirrors original semantics: returns the HNA routing table, not the
+    // static-routing association.
+    return m_routingTable.GetHnaRoutingTableConst();
+}
+
+// -----------------------------------------------------------------------
+// Query accessors
+// -----------------------------------------------------------------------
+
+std::vector<RoutingTableEntry>
+RoutingProtocol::GetRoutingTableEntries() const
+{
+    return m_routingTable.GetEntries();
+}
+
+MprSet
+RoutingProtocol::GetMprSet() const
+{
+    return m_state.GetMprSet();
+}
+
+const MprSelectorSet&
+RoutingProtocol::GetMprSelectors() const
+{
+    return m_state.GetMprSelectors();
+}
+
+const NeighborSet&
+RoutingProtocol::GetNeighbors() const
+{
+    return m_state.GetNeighbors();
+}
+
+const TwoHopNeighborSet&
+RoutingProtocol::GetTwoHopNeighbors() const
+{
+    return m_state.GetTwoHopNeighbors();
+}
+
+const TopologySet&
+RoutingProtocol::GetTopologySet() const
+{
+    return m_state.GetTopologySet();
+}
+
+const QbrState&
+RoutingProtocol::GetQbrState() const
+{
+    return m_state;
+}
+
+int64_t
+RoutingProtocol::AssignStreams(int64_t stream)
+{
+    NS_LOG_FUNCTION(this << stream);
+    m_uniformRandomVariable->SetStream(stream);
+    return 1;
+}
+
+// -----------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------
+
+Ipv4Address
+RoutingProtocol::GetMainAddress(Ipv4Address iface_addr) const
+{
+    const IfaceAssocTuple* tuple = m_state.FindIfaceAssocTuple(iface_addr);
+    return (tuple != nullptr) ? tuple->mainAddr : iface_addr;
+}
+
+bool
+RoutingProtocol::IsMyOwnAddress(const Ipv4Address& a) const
+{
+    for (const auto& [sock, ifaceAddr] : m_messageHandler.m_sendSockets)
+    {
+        if (a == ifaceAddr.GetLocal())
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+int
+RoutingProtocol::Degree(const NeighborTuple& tuple)
+{
+    int degree = 0;
+    for (const auto& nb2hop : m_state.GetTwoHopNeighbors())
+    {
+        if (nb2hop.neighborMainAddr == tuple.neighborMainAddr &&
+            m_state.FindNeighborTuple(nb2hop.neighborMainAddr) == nullptr)
+        {
+            degree++;
+        }
+    }
+    return degree;
+}
+
+bool
+RoutingProtocol::UsesNonQbrOutgoingInterface(const Ipv4RoutingTableEntry& route)
+{
+    return m_interfaceExclusions.count(route.GetInterface()) != 0;
+}
+
+void
+RoutingProtocol::Dump()
+{
+#ifdef NS3_LOG_ENABLE
+    Time now = Simulator::Now();
+    NS_LOG_DEBUG("Dumping for node with main address " << m_mainAddress);
+    NS_LOG_DEBUG(" Neighbor set");
+    for (const auto& nb : m_state.GetNeighbors())
+    {
+        NS_LOG_DEBUG("  " << nb);
+    }
+    NS_LOG_DEBUG(" Two-hop neighbor set");
+    for (const auto& nb2 : m_state.GetTwoHopNeighbors())
+    {
+        if (now < nb2.expirationTime)
+        {
+            NS_LOG_DEBUG("  " << nb2);
+        }
+    }
+    NS_LOG_DEBUG(" Routing table");
+    for (const auto& [dest, entry] : m_routingTable.GetTableRef())
+    {
+        NS_LOG_DEBUG("  dest=" << dest << " --> next=" << entry.nextAddr << " via interface "
+                               << entry.interface);
+    }
+    NS_LOG_DEBUG("");
+#endif
+}
+
+} // namespace qbr
+} // namespace ns3

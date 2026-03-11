@@ -1,0 +1,338 @@
+#ifndef QBR_ROUTING_PROTOCOL_H
+#define QBR_ROUTING_PROTOCOL_H
+
+/**
+ * @file qbr-routing-protocol.h
+ * @brief Top-level QBR routing protocol — composes RoutingTable, TupleManager,
+ *        and MessageHandler into the full ns-3 Ipv4RoutingProtocol.
+ *
+ * The original monolithic class has been split into three focused headers:
+ *
+ *  | Header                  | Owns                                            |
+ *  |-------------------------|-------------------------------------------------|
+ *  | qbr-routing-table.h     | m_table, m_hnaRoutingTable,                     |
+ *  |                         | m_routingTableAssociation; all entry ops        |
+ *  | qbr-tuple-manager.h     | m_ansn, m_linkTupleTimerFirstTime, QbrState&;   |
+ *  |                         | 18 Add/Remove, 7 timer expiries, NeighborLoss |
+ *  | qbr-message-handler.h   | sequence counters, queue, sockets, Tx/Rx traces;|
+ *  |                         | full send pipeline, RecvQbr, 4 Process*,        |
+ *  |                         | ForwardDefault, 4 HELLO sub-processors          |
+ *
+ * This file glues them together and exposes the public Ipv4RoutingProtocol
+ * API that ns-3 consumers and test cases depend on.
+ */
+
+#include "qbr-header.h"
+#include "qbr-message-handler.h"
+#include "qbr-routing-table.h"
+#include "qbr-state.h"
+#include "qbr-tuple-manager.h"
+
+#include "ns3/event-garbage-collector.h"
+#include "ns3/ipv4-routing-protocol.h"
+#include "ns3/ipv4-static-routing.h"
+#include "ns3/ipv4.h"
+#include "ns3/node.h"
+#include "ns3/object.h"
+#include "ns3/packet.h"
+#include "ns3/random-variable-stream.h"
+#include "ns3/timer.h"
+#include "ns3/traced-callback.h"
+
+#include <set>
+#include <vector>
+
+/// Testcase for MPR computation mechanism
+class QbrMprTestCase;
+
+namespace ns3
+{
+namespace qbr
+{
+
+/**
+ * @ingroup qbr
+ * @brief QBR routing protocol for IPv4.
+ *
+ * This class integrates RoutingTable, TupleManager, and MessageHandler and
+ * implements the full ns-3 Ipv4RoutingProtocol interface.  Prefer including
+ * one of the three sub-headers directly if only a subset of functionality is
+ * needed — doing so minimises recompilation and coupling.
+ */
+class RoutingProtocol : public Ipv4RoutingProtocol
+{
+  public:
+    /// Allow the MPR unit test direct access to internal state.
+    friend class ::QbrMprTestCase;
+
+    static const uint16_t QBR_PORT_NUMBER; //!< UDP port used by QBR (698).
+
+    /**
+     * @brief Returns the ns-3 TypeId for this object.
+     * @return The TypeId.
+     */
+    static TypeId GetTypeId();
+
+    RoutingProtocol();
+    ~RoutingProtocol() override;
+
+    // ------------------------------------------------------------------ //
+    //  Public configuration API
+    // ------------------------------------------------------------------ //
+
+    /**
+     * @brief Sets the QBR main address to the first address on @p interface.
+     * @param interface IPv4 interface index.
+     */
+    void SetMainInterface(uint32_t interface);
+
+    /**
+     * @brief Logs the neighbor, two-hop neighbor, and routing tables at
+     *        NS_LOG_DEBUG level.  No-op when logging is disabled.
+     */
+    void Dump();
+
+    /**
+     * @brief Returns a snapshot of the current routing table.
+     * @return Vector of RoutingTableEntry.
+     */
+    std::vector<RoutingTableEntry> GetRoutingTableEntries() const;
+
+    /** @return The current MPR set. */
+    MprSet GetMprSet() const;
+
+    /** @return The current MPR selector set. */
+    const MprSelectorSet& GetMprSelectors() const;
+
+    /** @return The set of one-hop neighbors discovered by QBR. */
+    const NeighborSet& GetNeighbors() const;
+
+    /** @return The set of two-hop neighbors discovered by QBR. */
+    const TwoHopNeighborSet& GetTwoHopNeighbors() const;
+
+    /** @return The topology set discovered by QBR. */
+    const TopologySet& GetTopologySet() const;
+
+    /** @return The underlying QbrState object. */
+    const QbrState& GetQbrState() const;
+
+    /**
+     * @brief Assigns stream indices to internal random variables.
+     * @param stream First stream index to use.
+     * @return Number of stream indices assigned.
+     */
+    int64_t AssignStreams(int64_t stream);
+
+    // ------------------------------------------------------------------ //
+    //  TracedCallback type aliases (forwarded from MessageHandler)
+    // ------------------------------------------------------------------ //
+
+    /// @copydoc MessageHandler::PacketTxRxTracedCallback
+    typedef MessageHandler::PacketTxRxTracedCallback PacketTxRxTracedCallback;
+
+    /**
+     * @brief TracedCallback signature for routing table size changes.
+     * @param [in] size The new routing table size.
+     */
+    typedef void (*TableChangeTracedCallback)(uint32_t size);
+
+    // ------------------------------------------------------------------ //
+    //  Interface exclusion
+    // ------------------------------------------------------------------ //
+
+    /**
+     * @return The set of interface indices excluded from QBR operation.
+     */
+    std::set<uint32_t> GetInterfaceExclusions() const
+    {
+        return m_interfaceExclusions;
+    }
+
+    /**
+     * @brief Replaces the set of interfaces excluded from QBR operation.
+     * @param exceptions New set of excluded interface indices.
+     */
+    void SetInterfaceExclusions(std::set<uint32_t> exceptions);
+
+    // ------------------------------------------------------------------ //
+    //  HNA (Host and Network Association) configuration
+    // ------------------------------------------------------------------ //
+
+    /**
+     * @brief Injects a (networkAddr, netmask) HNA association into this node's
+     *        advertisement list.  No-op if the entry already exists.
+     * @param networkAddr The network address to advertise.
+     * @param netmask     The corresponding network mask.
+     */
+    void AddHostNetworkAssociation(Ipv4Address networkAddr, Ipv4Mask netmask);
+
+    /**
+     * @brief Withdraws a (networkAddr, netmask) HNA association.
+     *        No-op if the entry does not exist.
+     * @param networkAddr The network address to withdraw.
+     * @param netmask     The corresponding network mask.
+     */
+    void RemoveHostNetworkAssociation(Ipv4Address networkAddr, Ipv4Mask netmask);
+
+    /**
+     * @brief Associates an Ipv4StaticRouting table for HNA advertisement.
+     *
+     * Non-QBR routes from the associated table are advertised as HNA entries.
+     * Calling this again replaces the previous association.
+     *
+     * @param routingTable The Ipv4StaticRouting table to associate.
+     */
+    void SetRoutingTableAssociation(Ptr<Ipv4StaticRouting> routingTable);
+
+    /**
+     * @return The currently associated HNA routing table (may be null).
+     */
+    Ptr<const Ipv4StaticRouting> GetRoutingTableAssociation() const;
+
+    // ------------------------------------------------------------------ //
+    //  Ipv4RoutingProtocol interface
+    // ------------------------------------------------------------------ //
+
+    Ptr<Ipv4Route> RouteOutput(Ptr<Packet> p,
+                               const Ipv4Header& header,
+                               Ptr<NetDevice> oif,
+                               Socket::SocketErrno& sockerr) override;
+
+    bool RouteInput(Ptr<const Packet> p,
+                    const Ipv4Header& header,
+                    Ptr<const NetDevice> idev,
+                    const UnicastForwardCallback& ucb,
+                    const MulticastForwardCallback& mcb,
+                    const LocalDeliverCallback& lcb,
+                    const ErrorCallback& ecb) override;
+
+    void SetIpv4(Ptr<Ipv4> ipv4) override;
+
+    void PrintRoutingTable(Ptr<OutputStreamWrapper> stream,
+                           Time::Unit unit = Time::S) const override;
+
+    /**
+     * @brief Returns the main QBR address associated with a given interface address.
+     * @param iface_addr The interface address to resolve.
+     * @return The corresponding main address.
+     */
+    Ipv4Address GetMainAddress(Ipv4Address iface_addr) const;
+
+  protected:
+    void DoInitialize() override;
+    void DoDispose() override;
+
+  private:
+    // ------------------------------------------------------------------ //
+    //  Notification overrides (Ipv4RoutingProtocol)
+    // ------------------------------------------------------------------ //
+    void NotifyInterfaceUp(uint32_t interface) override;
+    void NotifyInterfaceDown(uint32_t interface) override;
+    void NotifyAddAddress(uint32_t interface, Ipv4InterfaceAddress address) override;
+    void NotifyRemoveAddress(uint32_t interface, Ipv4InterfaceAddress address) override;
+
+    // ------------------------------------------------------------------ //
+    //  Internal computation helpers
+    // ------------------------------------------------------------------ //
+
+    /** @brief Computes the MPR set following RFC 3626 hints. */
+    void MprComputation();
+
+    /** @brief Recomputes the entire routing table following RFC 3626 hints. */
+    void RoutingTableComputation();
+
+    /**
+     * @brief Returns true when @p a is one of this node's own interface addresses.
+     * @param a The address to test.
+     */
+    bool IsMyOwnAddress(const Ipv4Address& a) const;
+
+    /**
+     * @brief Returns the degree (number of symmetric neighbors) of a neighbor tuple.
+     * @param tuple The neighbor tuple to inspect.
+     * @return Degree count.
+     */
+    int Degree(const NeighborTuple& tuple);
+
+    /**
+     * @brief Returns true when @p route exits through a non-QBR interface.
+     * @param route The routing table entry to test.
+     */
+    bool UsesNonQbrOutgoingInterface(const Ipv4RoutingTableEntry& route);
+
+    QbrState m_state; //!< All QBR tuple sets (shared with m_tupleManager)
+
+    // ------------------------------------------------------------------ //
+    //  Sub-components (the three new headers)
+    // ------------------------------------------------------------------ //
+
+    /// Routing table store and entry-level operations.
+    RoutingTable m_routingTable;
+
+    /// Tuple set store and timer-driven lifecycle management.
+    TupleManager m_tupleManager;
+
+    /// Packet/message I/O pipeline, queue, and trace sources.
+    MessageHandler m_messageHandler;
+
+    // ------------------------------------------------------------------ //
+    //  Periodic message timers
+    // ------------------------------------------------------------------ //
+
+    Timer m_helloTimer; //!< Fires HelloTimerExpire().
+    void HelloTimerExpire();
+
+    Timer m_tcTimer; //!< Fires TcTimerExpire().
+    void TcTimerExpire();
+
+    Timer m_midTimer; //!< Fires MidTimerExpire().
+    void MidTimerExpire();
+
+    Timer m_hnaTimer; //!< Fires HnaTimerExpire().
+    void HnaTimerExpire();
+
+    // ------------------------------------------------------------------ //
+    //  Remaining protocol-wide state
+    // ------------------------------------------------------------------ //
+
+    Ptr<Ipv4> m_ipv4; //!< The IPv4 object this protocol is attached to.
+
+    Ipv4Address m_mainAddress; //!< This node's main QBR address.
+
+    std::set<uint32_t> m_interfaceExclusions; //!< Interfaces excluded from QBR.
+
+    Time m_helloInterval;      //!< Period between HELLO messages.
+    Time m_tcInterval;         //!< Period between TC messages.
+    Time m_midInterval;        //!< Period between MID messages.
+    Time m_hnaInterval;        //!< Period between HNA messages.
+    Willingness m_willingness; //!< This node's forwarding willingness.
+
+    EventGarbageCollector m_events; //!< Tracks running timer events.
+
+    /// Provides uniform random jitter for message transmission.
+    Ptr<UniformRandomVariable> m_uniformRandomVariable;
+
+    /// Fired when the routing table size changes.
+    TracedCallback<uint32_t> m_routingTableChanged;
+
+    /**
+     * @brief Fired for every QBR packet received.
+     *
+     * Declared here (on RoutingProtocol) so that ns-3's MakeTraceSourceAccessor
+     * can bind it via a pointer-to-member of RoutingProtocol in GetTypeId().
+     * MessageHandler fires this through a registered callback set in SetIpv4().
+     */
+    TracedCallback<const PacketHeader&, const MessageList&> m_rxPacketTrace;
+
+    /**
+     * @brief Fired for every QBR packet transmitted.
+     *
+     * Same rationale as m_rxPacketTrace above.
+     */
+    TracedCallback<const PacketHeader&, const MessageList&> m_txPacketTrace;
+};
+
+} // namespace qbr
+} // namespace ns3
+
+#endif /* QBR_ROUTING_PROTOCOL_H */
