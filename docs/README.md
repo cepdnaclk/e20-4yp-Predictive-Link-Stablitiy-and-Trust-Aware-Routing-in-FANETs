@@ -51,6 +51,7 @@ Traditional ad-hoc routing protocols can be broadly categorized into reactive (o
 
 ## Methodology
 QBR operates at the network layer by applying Q-Learning to continuously improve routing decisions based on network conditions. The protocol maintains a Q-Table where each state represents a combination of destination and neighboring nodes, and actions correspond to selecting the next hop for packet forwarding. Routing decisions are made using an ε-greedy strategy, which balances exploration of new paths and exploitation of known high-quality routes. The reward mechanism is designed using real-time link metrics such as signal-to-noise ratio (SNR), packet delivery success, and delay, enabling the protocol to learn from network feedback. Additionally, Quantile Regression is incorporated to estimate the distribution of Q-values, allowing the model to account for uncertainty in link quality and make risk-aware decisions. As packets are transmitted, the protocol dynamically updates its knowledge and progressively converges toward optimal routing paths under changing network conditions.
+![Methodology Diagram](./images/Methodology.JPG)
 
 ## Experiment Setup and Implementation
 We evaluate QBR using NS-3, a discrete-event network simulator, with the following configuration:
