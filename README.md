@@ -1,3 +1,16 @@
+# Predictive Link Stability and Trust-Aware Routing in FANETs
+
+#### Team
+
+- E/20/035, K.C.H.N.A.W.M.R.C.J.N. Bandara, [email](mailto:e20035@eng.pdn.ac.lk)
+- E/20/173, P.A.S.V. Jayasooriya, [email](mailto:e20173@eng.pdn.ac.lk)
+- E/20/178, N.K.D.P. Jayawardena, [email](mailto:e20178@eng.pdn.ac.lk)
+
+#### Supervisors
+
+- Dr. Suneth Namal Karunarathna, [email](mailto:namal@eng.pdn.ac.lk)
+- Dr. Upul Jayasinghe, [email](mailto:upuljm@eng.pdn.ac.lk)
+
 1. Add the simulation.cc file to ./scratch folder
 2. Add the plot_grphs.py to the root directory of ns-3 
 3. Add the QBR protocol to the ./src directory
