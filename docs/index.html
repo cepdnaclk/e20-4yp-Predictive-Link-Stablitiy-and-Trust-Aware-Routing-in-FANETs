@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Predictive Link Stability and Trust-Aware Routing in FANETs using Q-Learning">
+    <title>Predictive Link Stability and Trust-Aware Routing in FANETs</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient-start: #f4f8fd;
+            --bg-gradient-end: #fcfdfd;
+            --text-main: #334155;
+            --text-muted: #64748b;
+            --accent-color: #6da5e3;
+            /* Charming soft light blue */
+            --accent-dark: #4b89ce;
+            --card-bg: rgba(255, 255, 255, 0.85);
+            --card-border: rgba(109, 165, 227, 0.2);
+            --shadow: 0 10px 40px -10px rgba(109, 165, 227, 0.15);
+            --shadow-hover: 0 15px 50px -10px rgba(109, 165, 227, 0.25);
+            --nav-bg: rgba(255, 255, 255, 0.7);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+            color: var(--text-main);
+            line-height: 1.7;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        /* Header Styles */
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+            padding: 80px 40px;
+            border-radius: 30px;
+            background: var(--card-bg);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--card-border);
+            position: relative;
+            overflow: hidden;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(109, 165, 227, 0.1) 0%, transparent 60%);
+            z-index: 0;
+            animation: pulseBg 10s infinite alternate;
+        }
+
+        @keyframes pulseBg {
+            0% {
+                transform: scale(1);
+            }
+
+            100% {
+                transform: scale(1.05);
+            }
+        }
+
+        header h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #2c2a35;
+            margin-bottom: 25px;
+            position: relative;
+            z-index: 1;
+            letter-spacing: -0.5px;
+            line-height: 1.2;
+        }
+
+        .repo-link {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 14px 34px;
+            background-color: var(--accent-color);
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+            box-shadow: 0 4px 15px rgba(109, 165, 227, 0.4);
+            position: relative;
+            z-index: 1;
+        }
+
+        .repo-link:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(109, 165, 227, 0.6);
+            background-color: var(--accent-dark);
+        }
+
+        /* Navigation */
+        nav {
+            position: sticky;
+            top: 20px;
+            z-index: 100;
+            background: var(--nav-bg);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50px;
+            padding: 15px 30px;
+            margin-bottom: 50px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.03);
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        nav a {
+            color: var(--text-main);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: color 0.3s ease;
+        }
+
+        nav a:hover {
+            color: var(--accent-dark);
+        }
+
+        /* People Section */
+        .people-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 60px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 35px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .card h2 {
+            font-size: 1.6rem;
+            color: #2c2a35;
+            margin-bottom: 25px;
+            border-bottom: 3px solid var(--accent-color);
+            padding-bottom: 10px;
+            display: inline-block;
+            border-radius: 2px;
+        }
+
+        .person {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 16px;
+            transition: all 0.2s ease;
+            background: rgba(255, 255, 255, 0.5);
+            border: 1px solid transparent;
+        }
+
+        .person:hover {
+            background: rgba(109, 165, 227, 0.05);
+            border-color: rgba(109, 165, 227, 0.2);
+            transform: translateX(5px);
+        }
+
+        .person-name {
+            font-weight: 600;
+            color: #2c2a35;
+            font-size: 1.1rem;
+            margin-bottom: 4px;
+        }
+
+        .person-role {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .profile-img {
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin: 15px auto;
+            border: 3px solid white;
+            box-shadow: 0 8px 20px rgba(109, 165, 227, 0.25);
+            transition: transform 0.3s ease;
+            display: block;
+        }
+
+        .profile-img:hover {
+            transform: scale(1.05) rotate(3deg);
+        }
+
+        .person-email {
+            font-size: 0.95rem;
+            color: var(--accent-dark);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .person-email:hover {
+            text-decoration: underline;
+        }
+
+        /* Content Sections */
+        .content-section {
+            background: var(--card-bg);
+            border-radius: 30px;
+            padding: 50px;
+            box-shadow: var(--shadow);
+            margin-bottom: 40px;
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(10px);
+        }
+
+        .section-title {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 35px;
+            color: #2c2a35;
+            position: relative;
+            padding-left: 24px;
+        }
+
+        .section-title::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 15%;
+            height: 70%;
+            width: 6px;
+            background: var(--accent-color);
+            border-radius: 6px;
+        }
+
+        .text-block {
+            margin-bottom: 40px;
+        }
+
+        .text-block h3 {
+            font-size: 1.5rem;
+            color: #2c2a35;
+            margin-top: 35px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+        }
+
+        .text-block h3::before {
+            content: '';
+            display: inline-block;
+            width: 25px;
+            height: 2px;
+            background-color: var(--accent-color);
+            margin-right: 15px;
+        }
+
+        .text-block p {
+            font-size: 1.15rem;
+            color: #4f4c58;
+            margin-bottom: 20px;
+            text-align: justify;
+            letter-spacing: 0.2px;
+        }
+
+        .text-block p.highlight {
+            padding: 20px;
+            background: rgba(109, 165, 227, 0.08);
+            border-radius: 12px;
+            border-left: 4px solid var(--accent-color);
+            font-style: italic;
+        }
+
+        .graphics-container {
+            text-align: center;
+            margin: 50px 0;
+            position: relative;
+        }
+
+        .graphics-container img {
+            max-width: 100%;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+            transition: transform 0.4s ease;
+            border: 8px solid white;
+        }
+
+        .graphics-container img:hover {
+            transform: scale(1.03);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.12);
+        }
+
+        .graphics-caption {
+            margin-top: 15px;
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .custom-list {
+            list-style-type: none;
+            background: rgba(255, 255, 255, 0.6);
+            padding: 25px;
+            border-radius: 16px;
+        }
+
+        .custom-list li {
+            position: relative;
+            padding-left: 35px;
+            margin-bottom: 18px;
+            color: #4f4c58;
+            font-size: 1.1rem;
+        }
+
+        .custom-list li:last-child {
+            margin-bottom: 0;
+        }
+
+        .custom-list li::before {
+            content: '✦';
+            position: absolute;
+            left: 0;
+            color: var(--accent-color);
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            margin-top: 50px;
+            font-size: 0.95rem;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .people-section {
+                grid-template-columns: 1fr;
+            }
+
+            .content-section {
+                padding: 35px 25px;
+            }
+
+            header {
+                padding: 50px 20px;
+            }
+
+            header h1 {
+                font-size: 2.2rem;
+            }
+
+            nav {
+                display: none;
+                /* Can be replaced with a hamburger menu for full implementation */
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <nav>
+        <a href="#summary">Project Summary</a>
+        <a href="#abstract">Abstract</a>
+        <a href="#related">Related Works</a>
+        <a href="#methodology">Methodology</a>
+        <a href="#results">Results</a>
+        <a href="#conclusion">Conclusion</a>
+    </nav>
+
+    <div class="container">
+
+        <header>
+            <h1>Predictive Link Stability and Trust-Aware Routing in FANETs</h1>
+            <p style="font-size: 1.2rem; color: #5a5866; max-width: 700px; margin: 0 auto 30px auto;">
+                A machine learning–based routing protocol that uses Q-learning to enable resilient and self-optimizing
+                routing in Flying Ad-hoc Networks (FANETs)
+            </p>
+
+            <div
+                style="margin: 0 auto 35px auto; max-width: 800px; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 40px rgba(109, 165, 227, 0.15); border: 6px solid white;">
+                <img src="./images/Drones.jpg" alt="FANET Drones Network"
+                    style="width: 100%; height: auto; display: block; transition: transform 0.5s ease; border-radius: 18px;"
+                    onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'">
+            </div>
+
+            <a href="https://github.com/cepdnaclk/e20-4yp-Predictive-Link-Stablitiy-and-Trust-Aware-Routing-in-FANETs"
+                class="repo-link" target="_blank">
+                View GitHub Repository
+            </a>
+        </header>
+
+        <section class="people-section" style="display: flex; flex-direction: column; gap: 30px; margin-bottom: 60px;">
+            <div class="card" style="padding: 40px;">
+                <h2 style="display: block; text-align: center; margin-bottom: 35px;">Our Team</h2>
+                <div style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-evenly;">
+                    <div class="person" style="flex: 1; min-width: 250px; text-align: center; margin-bottom: 0;">
+                        <div class="person-name">K.C.H.N.A.W.M.R.C.J.N. Bandara</div>
+                        <img src="./images/e20035.jpg" alt="K.C.H.N.A.W.M.R.C.J.N. Bandara" class="profile-img">
+                        <div class="person-role">E/20/035</div>
+                        <a href="mailto:e20035@eng.pdn.ac.lk" class="person-email"
+                            style="justify-content: center;">e20035@eng.pdn.ac.lk</a>
+                    </div>
+                    <div class="person" style="flex: 1; min-width: 250px; text-align: center; margin-bottom: 0;">
+                        <div class="person-name">P.A.S.V. Jayasooriya</div>
+                        <img src="./images/e20173.jpg" alt="P.A.S.V. Jayasooriya" class="profile-img">
+                        <div class="person-role">E/20/173</div>
+                        <a href="mailto:e20173@eng.pdn.ac.lk" class="person-email"
+                            style="justify-content: center;">e20173@eng.pdn.ac.lk</a>
+                    </div>
+                    <div class="person" style="flex: 1; min-width: 250px; text-align: center; margin-bottom: 0;">
+                        <div class="person-name">N.K.D.P. Jayawardena</div>
+                        <img src="./images/e20178.jpg" alt="N.K.D.P. Jayawardena" class="profile-img">
+                        <div class="person-role">E/20/178</div>
+                        <a href="mailto:e20178@eng.pdn.ac.lk" class="person-email"
+                            style="justify-content: center;">e20178@eng.pdn.ac.lk</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="padding: 40px;">
+                <h2 style="display: block; text-align: center; margin-bottom: 35px;">Supervisors</h2>
+                <div style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-evenly;">
+                    <div class="person" style="flex: 1; min-width: 250px; text-align: center; margin-bottom: 0;">
+                        <div class="person-name">Dr. Suneth Namal Karunarathna</div>
+                        <img src="./images/suneth-namal-karunarathna.png" alt="Dr. Suneth Namal Karunarathna"
+                            class="profile-img">
+                        <a href="mailto:namal@eng.pdn.ac.lk" class="person-email"
+                            style="margin-top: 5px; justify-content: center;">namal@eng.pdn.ac.lk</a>
+                    </div>
+                    <div class="person" style="flex: 1; min-width: 250px; text-align: center; margin-bottom: 0;">
+                        <div class="person-name">Dr. Upul Jayasinghe</div>
+                        <img src="./images/upul-jayasinghe.jpg" alt="Dr. Upul Jayasinghe" class="profile-img">
+                        <a href="mailto:upuljm@eng.pdn.ac.lk" class="person-email"
+                            style="margin-top: 5px; justify-content: center;">upuljm@eng.pdn.ac.lk</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="summary" class="content-section">
+            <h2 class="section-title">Project Summary</h2>
+            <div class="text-block">
+                <p>Efficient routing in Flying Ad Hoc Networks (FANETs) remains a critical challenge due to time-varying
+                    link quality, high node mobility, and unpredictable network topology changes. Traditional routing
+                    protocols like OLSR and AODV heavily rely on static metrics and fixed decision rules. In highly
+                    dynamic scenarios, these static rules frequently fail to adapt to rapidly changing conditions,
+                    resulting in packet loss and high latency. This project proposes QBR (Q-Learning Based Routing), a
+                    novel machine learning-driven routing protocol that leverages Q-Learning integrated with Quantile
+                    Regression to make intelligent, adaptive routing decisions on demand.</p>
+                <p>Unlike conventional protocols, QBR dynamically adapts its path selection in real-time by learning
+                    from continuous network feedback. This feedback loop includes crucial link quality metrics such as
+                    Signal-to-Noise Ratio (SNR), packet loss rates, latency, and throughput. By evaluating QBR against
+                    established protocols in a comprehensive simulated 40-node wireless network using NS-3, experimental
+                    results demonstrate that QBR consistently achieves a higher Packet Delivery Ratio (PDR) and improved
+                    overall throughput. Furthermore, it manages to maintain competitive latency, particularly excelling
+                    in scenarios plagued with heavily fluctuating link quality.</p>
+                <p>Ultimately, this project firmly establishes that reinforcement learning-based routing can effectively
+                    overcome the inherent limitations of traditional routing paradigms in dynamic wireless environments.
+                    Our unique approach applies Quantile Regression to estimate the distribution of Q-values, allowing
+                    the model not just to estimate the average path quality, but to account for uncertainty. This paves
+                    the way for truly risk-aware routing decisions. In conclusion, our findings illustrate the immense
+                    potential of reinforcement learning to enhance network stability and performance. We confidently
+                    suggest that such intelligent, adaptive routing protocols represent the future of stable
+                    communication links in next-generation Flying Ad Hoc Networks.</p>
+            </div>
+        </section>
+
+        <section class="content-section">
+            <div class="text-block" id="abstract">
+                <h2 class="section-title">1. Abstract</h2>
+                <p class="highlight">Efficient routing in Flying Ad Hoc Networks remains a critical challenge due to
+                    time-varying link quality, node mobility, and unpredictable network topology changes. Traditional
+                    routing protocols like OLSR and AODV rely on static metrics and fixed decision rules, which often
+                    fail to adapt to rapidly changing conditions. This paper proposes QBR (Q-Learning Based Routing), a
+                    novel machine learning-driven routing protocol that leverages Q-Learning with Quantile Regression to
+                    make intelligent routing decisions on demand. Unlike conventional protocols, QBR adapts its path
+                    selection in real-time by learning from network feedback, including link quality metrics (SNR,
+                    packet loss), latency, and throughput. We evaluate QBR against established protocols (OLSR and AODV)
+                    in a simulated 40-node wireless network using NS-3. Experimental results demonstrate that QBR
+                    achieves higher Packet Delivery Ratio (PDR) and improved throughput while maintaining competitive
+                    latency, particularly in scenarios with fluctuating link quality. The findings illustrate the
+                    potential of reinforcement learning-based approaches to enhance routing performance in dynamic
+                    wireless networks.</p>
+            </div>
+
+            <div class="text-block" id="related">
+                <h2 class="section-title">2. Related Works</h2>
+                <p>Traditional ad hoc routing protocols are broadly classified as reactive (AODV, DSR) and proactive
+                    (OLSR), relying on simple metrics like hop count that are often inadequate in highly dynamic FANET
+                    environments.
+                    To address these limitations, research has shifted toward intelligent routing using machine
+                    learning, particularly reinforcement learning techniques such as Q-learning, which enable adaptive
+                    and self-optimizing decision-making. While prior work has explored learning-based routing, limited
+                    attention has been given to handling uncertainty in link quality. This work advances the state of
+                    the art by integrating Q-learning with Quantile Regression, enabling risk-aware routing decisions
+                    that account for both expected performance and uncertainty, thereby improving reliability in dynamic
+                    UAV networks.</p>
+            </div>
+
+            <div class="text-block" id="methodology">
+                <h2 class="section-title">3. Methodology</h2>
+                <p>QBR operates at the network layer by applying Q-Learning to continuously improve routing decisions
+                    based on network conditions. The protocol maintains a Q-Table where each state represents a
+                    combination of destination and neighboring nodes, and actions correspond to selecting the next hop
+                    for packet forwarding. Routing decisions are made using an ε-greedy strategy, which balances
+                    exploration of new paths and exploitation of known high-quality routes. The reward mechanism is
+                    designed using real-time link metrics such as signal-to-noise ratio (SNR), packet delivery success,
+                    and delay, enabling the protocol to learn from network feedback. Additionally, Quantile Regression
+                    is incorporated to estimate the distribution of Q-values, allowing the model to account for
+                    uncertainty in link quality and make risk-aware decisions. As packets are transmitted, the protocol
+                    dynamically updates its knowledge and progressively converges toward optimal routing paths under
+                    changing network conditions.</p>
+            </div>
+
+            <div class="graphics-container">
+                <!-- Using placeholder if image does not load or path is incorrect -->
+                <!-- Assuming the README specified ./images/Methodology.JPG -->
+                <img src="./images/Methodology.JPG" alt="Methodology Diagram"
+                    onerror="this.onerror=null; this.src='https://via.placeholder.com/800x400/f4f8fd/6da5e3?text=Methodology+Diagram';">
+            </div>
+
+            <!-- <div class="text-block" id="experiments">
+                <h2 class="section-title">4. Experiment Setup and Implementation</h2>
+                <p>We evaluate QBR using NS-3, a discrete-event network simulator, with the following detailed
+                    configuration:</p>
+                <ul class="custom-list">
+                    <li><strong>Network Topology:</strong> 40 mobile nodes deployed in a 1000 m × 1000 m area.</li>
+                    <li><strong>Mobility Model:</strong> Random Waypoint Model with velocity 0.5–10 m/s and pause time 5
+                        seconds.</li>
+                    <li><strong>Physical Layer:</strong> 802.11g WiFi with 54 Mbps data rate.</li>
+                    <li><strong>Communication:</strong> CBR (Constant Bit Rate) traffic: 10 flows, 512-byte packets, 5
+                        packets/second.</li>
+                    <li><strong>Simulation Duration:</strong> 300 seconds.</li>
+                    <li><strong>Q-Learning Parameters:</strong> Learning rate α = 0.1, discount factor γ = 0.95, ε = 0.1
+                        (decaying).</li>
+                    <li><strong>Comparison Protocols:</strong> OLSR (proactive), AODV (reactive), QBR (learning-based).
+                    </li>
+                    <li><strong>Evaluation Metrics:</strong> PDR (Packet Delivery Ratio), Average Latency (Mean
+                        end-to-end delay), Throughput.</li>
+                </ul>
+                <p>Performance is recorded every 1 second, and results are aggregated for statistical analysis.</p>
+            </div> -->
+
+            <div class="text-block" id="results">
+                <h2 class="section-title">4. Results and Analysis</h2>
+                <p>From the NS-3 simulation setup, the QBR protocol achieves a higher Packet Delivery Ratio (PDR) and
+                    lower average delay compared to both AODV and OLSR. As the number of nodes increases, QBR
+                    consistently demonstrates better performance, maintaining more stable and efficient routing under
+                    higher network density.</p>
+                <div
+                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-top: 40px;">
+                    <div style="text-align: center;">
+                        <img src="./images/r_1.JPG" alt="Result 1"
+                            style="width: 100%; border-radius: 16px; box-shadow: 0 10px 25px rgba(109, 165, 227, 0.15); border: 5px solid white; transition: transform 0.3s ease;"
+                            onmouseover="this.style.transform='scale(1.02)'"
+                            onmouseout="this.style.transform='scale(1)'">
+                    </div>
+                    <div style="text-align: center;">
+                        <img src="./images/r_2.JPG" alt="Result 2"
+                            style="width: 100%; border-radius: 16px; box-shadow: 0 10px 25px rgba(109, 165, 227, 0.15); border: 5px solid white; transition: transform 0.3s ease;"
+                            onmouseover="this.style.transform='scale(1.02)'"
+                            onmouseout="this.style.transform='scale(1)'">
+                    </div>
+                    <div style="text-align: center;">
+                        <img src="./images/r_3.JPG" alt="Result 3"
+                            style="width: 100%; border-radius: 16px; box-shadow: 0 10px 25px rgba(109, 165, 227, 0.15); border: 5px solid white; transition: transform 0.3s ease;"
+                            onmouseover="this.style.transform='scale(1.02)'"
+                            onmouseout="this.style.transform='scale(1)'">
+                    </div>
+                    <div style="text-align: center;">
+                        <img src="./images/r_4.JPG" alt="Result 4"
+                            style="width: 100%; border-radius: 16px; box-shadow: 0 10px 25px rgba(109, 165, 227, 0.15); border: 5px solid white; transition: transform 0.3s ease;"
+                            onmouseover="this.style.transform='scale(1.02)'"
+                            onmouseout="this.style.transform='scale(1)'">
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-block" id="conclusion">
+                <h2 class="section-title">5. Conclusion</h2>
+                <p>This work demonstrates that reinforcement learning-based routing can effectively address limitations
+                    of traditional routing protocols in dynamic wireless networks. QBR leverages Q-Learning and Quantile
+                    Regression to learn adaptive routing policies that improve Packet Delivery Ratio and throughput
+                    compared to OLSR and AODV. The experimental evaluation confirms that the protocol rapidly converges
+                    to optimal routing decisions as network conditions evolve. However, scalability to larger networks,
+                    computational overhead, and Q-Table memory requirements merit further investigation. Future work
+                    should explore hierarchical Q-Learning for large-scale networks, integration of multi-agent
+                    reinforcement learning for cooperative routing, and deployment on real wireless testbeds to validate
+                    simulation findings. The results suggest that machine learning approaches offer promising avenues
+                    for developing more intelligent and adaptive routing protocols in next-generation wireless networks.
+                </p>
+            </div>
+        </section>
+
+        <footer>
+            <p>&copy; 2026 Department of Computer Engineering, University of Peradeniya.</p>
+        </footer>
+
+    </div>
+</body>
+
+</html>
