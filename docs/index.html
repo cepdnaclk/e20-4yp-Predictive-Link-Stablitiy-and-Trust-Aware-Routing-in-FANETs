@@ -476,76 +476,78 @@
         <section id="summary" class="content-section">
             <h2 class="section-title">Project Summary</h2>
             <div class="text-block">
-                <p>Efficient routing in Flying Ad Hoc Networks (FANETs) remains a critical challenge due to time-varying
-                    link quality, high node mobility, and unpredictable network topology changes. Traditional routing
-                    protocols like OLSR and AODV heavily rely on static metrics and fixed decision rules. In highly
-                    dynamic scenarios, these static rules frequently fail to adapt to rapidly changing conditions,
-                    resulting in packet loss and high latency. This project proposes QBR (Q-Learning Based Routing), a
-                    novel machine learning-driven routing protocol that leverages Q-Learning integrated with Quantile
-                    Regression to make intelligent, adaptive routing decisions on demand.</p>
-                <p>Unlike conventional protocols, QBR dynamically adapts its path selection in real-time by learning
-                    from continuous network feedback. This feedback loop includes crucial link quality metrics such as
-                    Signal-to-Noise Ratio (SNR), packet loss rates, latency, and throughput. By evaluating QBR against
-                    established protocols in a comprehensive simulated 40-node wireless network using NS-3, experimental
-                    results demonstrate that QBR consistently achieves a higher Packet Delivery Ratio (PDR) and improved
-                    overall throughput. Furthermore, it manages to maintain competitive latency, particularly excelling
-                    in scenarios plagued with heavily fluctuating link quality.</p>
-                <p>Ultimately, this project firmly establishes that reinforcement learning-based routing can effectively
-                    overcome the inherent limitations of traditional routing paradigms in dynamic wireless environments.
-                    Our unique approach applies Quantile Regression to estimate the distribution of Q-values, allowing
-                    the model not just to estimate the average path quality, but to account for uncertainty. This paves
-                    the way for truly risk-aware routing decisions. In conclusion, our findings illustrate the immense
-                    potential of reinforcement learning to enhance network stability and performance. We confidently
-                    suggest that such intelligent, adaptive routing protocols represent the future of stable
-                    communication links in next-generation Flying Ad Hoc Networks.</p>
+                <p>Flying Ad Hoc Networks (FANETs), composed of Unmanned Aerial Vehicles (UAVs), have diverse civilian and military applications but suffer from major communication challenges caused by high-speed three-dimensional mobility, frequent topology changes, and intermittent links. These dynamics degrade Quality of Service through increased packet loss and delay, while the decentralized and potentially adversarial nature of FANETs demands strong security mechanisms to detect malicious or non-cooperative nodes.</p>
+                <p>This project proposes QBR (Q-Learning Based Routing), a unified predictive link stability and trust-aware routing framework for FANETs. Unlike conventional approaches that treat link stability and trust as independent components, QBR integrates cross-layer link metrics, a composite trust model, and distributional reinforcement learning through a Quantile Regression Deep Q-Network (QR-DQN) into a single cohesive architecture. By moving from reactive routing to an adaptive, uncertainty-aware decision-making paradigm, the framework jointly optimizes link quality and node reliability in real time.</p>
+                <p>The framework is evaluated in a simulation environment using NS-3 against OLSR and AODV baselines. Results confirm that QBR achieves higher Packet Delivery Ratio, more stable end-to-end delay, and improved resilience under adversarial conditions. Control overhead is managed through Multipoint Relay optimization, message piggybacking, and threshold-based suppression mechanisms, ensuring performance gains are achieved without disproportionate communication costs.</p>
             </div>
         </section>
 
         <section class="content-section">
             <div class="text-block" id="abstract">
                 <h2 class="section-title">1. Abstract</h2>
-                <p class="highlight">Efficient routing in Flying Ad Hoc Networks remains a critical challenge due to
-                    time-varying link quality, node mobility, and unpredictable network topology changes. Traditional
-                    routing protocols like OLSR and AODV rely on static metrics and fixed decision rules, which often
-                    fail to adapt to rapidly changing conditions. This paper proposes QBR (Q-Learning Based Routing), a
-                    novel machine learning-driven routing protocol that leverages Q-Learning with Quantile Regression to
-                    make intelligent routing decisions on demand. Unlike conventional protocols, QBR adapts its path
-                    selection in real-time by learning from network feedback, including link quality metrics (SNR,
-                    packet loss), latency, and throughput. We evaluate QBR against established protocols (OLSR and AODV)
-                    in a simulated 40-node wireless network using NS-3. Experimental results demonstrate that QBR
-                    achieves higher Packet Delivery Ratio (PDR) and improved throughput while maintaining competitive
-                    latency, particularly in scenarios with fluctuating link quality. The findings illustrate the
-                    potential of reinforcement learning-based approaches to enhance routing performance in dynamic
-                    wireless networks.</p>
+                <p class="highlight">Flying Ad Hoc Networks (FANETs), composed of Unmanned Aerial Vehicles (UAVs), are increasingly critical for mission-oriented applications ranging from disaster response to intelligent surveillance. However, their high-speed three-dimensional mobility, frequent topology changes, and exposure to adversarial threats pose significant challenges for reliable and secure routing. Existing approaches largely treat link stability and trust evaluation as independent problems, limiting their effectiveness in dynamic aerial environments. This paper proposes a unified predictive link stability and trust-aware routing framework, termed QBR, which integrates cross-layer link metrics, a composite trust model, and distributional reinforcement learning through a Quantile Regression Deep Q-Network (QR-DQN). The composite trust model combines direct, indirect, and path-level trust components, while the multi-metric state representation incorporates SNR, ETX, delay, jitter, and node mobility parameters. Control overhead is mitigated through Multipoint Relay optimization, message piggybacking, and threshold-based suppression mechanisms. Simulation results demonstrate that QBR consistently outperforms OLSR and AODV in Packet Delivery Ratio, end-to-end delay, jitter, and scalability, while exhibiting improved resilience under adversarial conditions. The findings confirm that jointly optimizing link quality and trust through uncertainty-aware learning yields more stable and secure routing in highly dynamic FANET environments.</p>
             </div>
 
             <div class="text-block" id="related">
                 <h2 class="section-title">2. Related Works</h2>
-                <p>Traditional ad hoc routing protocols are broadly classified as reactive (AODV, DSR) and proactive
-                    (OLSR), relying on simple metrics like hop count that are often inadequate in highly dynamic FANET
-                    environments.
-                    To address these limitations, research has shifted toward intelligent routing using machine
-                    learning, particularly reinforcement learning techniques such as Q-learning, which enable adaptive
-                    and self-optimizing decision-making. While prior work has explored learning-based routing, limited
-                    attention has been given to handling uncertainty in link quality. This work advances the state of
-                    the art by integrating Q-learning with Quantile Regression, enabling risk-aware routing decisions
-                    that account for both expected performance and uncertainty, thereby improving reliability in dynamic
-                    UAV networks.</p>
+                <p>Early FANET routing protocols adapted from MANETs, such as AODV and GPSR, suffered from route instability and high latency. Later protocols focused on link stability by incorporating metrics like signal strength, delay, and traffic load. Deterministic approaches, however, could not fully manage UAV mobility, prompting the development of algorithmic optimizations using fuzzy logic, metaheuristics, and predictive learning to improve reliability and energy efficiency.
+
+Trust and security also became critical considerations, as UAVs operate in open or adversarial environments. Initial models used direct node behavior observations, while later approaches integrated fuzzy logic, blockchain, and AI-based methods for dynamic trust evaluation and malicious node isolation. Blockchain-based trust models offered tamper-resistant evaluation but introduced computational overhead unsuitable for energy-constrained UAVs.
+
+AI and machine learning, particularly reinforcement learning, have transformed FANET routing by enabling predictive and adaptive strategies for both link stability and trust. Cluster-based and topology-aware RL models improve reliability under dynamic conditions. However, research gaps remain, including limited integration of predictive link stability with real-time trust, mobility-adaptive trust assessment, and lightweight models suitable for UAV resource constraints. The proposed QBR framework directly addresses these gaps through a unified, distributional learning-based architecture.</p>
             </div>
 
             <div class="text-block" id="methodology">
                 <h2 class="section-title">3. Methodology</h2>
-                <p>QBR operates at the network layer by applying Q-Learning to continuously improve routing decisions
-                    based on network conditions. The protocol maintains a Q-Table where each state represents a
-                    combination of destination and neighboring nodes, and actions correspond to selecting the next hop
-                    for packet forwarding. Routing decisions are made using an ε-greedy strategy, which balances
-                    exploration of new paths and exploitation of known high-quality routes. The reward mechanism is
-                    designed using real-time link metrics such as signal-to-noise ratio (SNR), packet delivery success,
-                    and delay, enabling the protocol to learn from network feedback. Additionally, Quantile Regression
-                    is incorporated to estimate the distribution of Q-values, allowing the model to account for
-                    uncertainty in link quality and make risk-aware decisions. As packets are transmitted, the protocol
-                    dynamically updates its knowledge and progressively converges toward optimal routing paths under
-                    changing network conditions.</p>
+                <h3>Baseline Protocol and Design Motivation</h3>
+                <p>The proposed framework was benchmarked against OLSR and AODV to establish a performance reference.
+                    OLSR operates proactively through Multipoint Relays but lacks predictive capabilities and trust
+                    awareness. AODV establishes routes reactively on demand, making it susceptible to frequent route
+                    discovery overhead under high mobility. Neither protocol incorporates link quality prediction or
+                    trust-aware decision-making, reflecting the core limitations motivating the development of QBR.</p>
+
+                <h3>Reinforcement Learning-Based Routing Framework</h3>
+                <p>The routing problem is formulated as a Markov Decision Process and solved using reinforcement
+                    learning. The state space represents current network conditions including link quality metrics and
+                    trust values. The action space corresponds to next-hop node selection, and the reward signal
+                    provides feedback based on routing performance and link reliability. A standard Q-learning model was
+                    initially implemented before being extended to a Quantile Regression Deep Q-Network (QR-DQN), which
+                    models the full distribution of expected returns rather than a scalar estimate. This enables
+                    uncertainty-aware, risk-sensitive routing decisions under stochastic link variations and
+                    mobility-induced unpredictability.</p>
+
+                <h3>Link Stability Modeling and Metric Selection</h3>
+                <p>Routing decisions are based on a comprehensive multi-metric evaluation framework. The incorporated
+                    metrics include Packet Delivery Ratio, End-to-End Delay, Jitter, Throughput, Expected Transmission
+                    Count (ETX), Signal-to-Noise Ratio (SNR), and node mobility parameters (position and velocity). A
+                    key contribution is the cross-layer integration of SNR from the data link layer into the network
+                    layer routing process, enabling more accurate link quality estimation and anticipatory
+                    decision-making before link degradation manifests as packet loss.</p>
+
+                <h3>Reward Function Design</h3>
+                <p>The reward function is formulated as a multi-objective optimization function balancing reliability,
+                    latency, stability, and security. Positive rewards are assigned to routing decisions selecting
+                    stable, high-quality, and trustworthy links, while penalties are applied for link failures, packet
+                    drops, selection of low-trust nodes, and paths with high energy consumption. Link Expiration Time
+                    is included as a reward component, enabling the agent to prefer routes with longer expected
+                    lifetimes and reducing the frequency of route failures.</p>
+
+                <h3>Trust-Aware Routing Mechanism</h3>
+                <p>A composite trust model is incorporated into the routing framework. The trust value of each node is
+                    computed as a weighted combination of direct trust derived from first-hand behavioral observations,
+                    indirect trust obtained from neighboring node recommendations, and path trust representing
+                    cumulative trustworthiness along an entire routing path. The trust score is integrated into both
+                    the state space and reward function of QR-DQN. A threshold-based filtering mechanism progressively
+                    excludes nodes below a predefined trust level from routing candidates, producing a self-correcting
+                    behavior where malicious or non-cooperative nodes are gradually isolated without centralized
+                    coordination.</p>
+
+                <h3>Control Overhead Optimization</h3>
+                <p>To address resource constraints, control overhead is minimized through Multipoint Relay optimization
+                    for efficient topology dissemination, piggybacking of neighbor and trust information within
+                    Topology Control messages, and HELLO message suppression to eliminate redundant periodic
+                    transmissions. A threshold-based control mechanism triggers updates only when meaningful changes in
+                    network state are detected, ensuring overhead does not scale linearly with network size.</p>
             </div>
 
             <div class="graphics-container">
@@ -555,34 +557,36 @@
                     onerror="this.onerror=null; this.src='https://via.placeholder.com/800x400/f4f8fd/6da5e3?text=Methodology+Diagram';">
             </div>
 
-            <!-- <div class="text-block" id="experiments">
-                <h2 class="section-title">4. Experiment Setup and Implementation</h2>
-                <p>We evaluate QBR using NS-3, a discrete-event network simulator, with the following detailed
-                    configuration:</p>
-                <ul class="custom-list">
-                    <li><strong>Network Topology:</strong> 40 mobile nodes deployed in a 1000 m × 1000 m area.</li>
-                    <li><strong>Mobility Model:</strong> Random Waypoint Model with velocity 0.5–10 m/s and pause time 5
-                        seconds.</li>
-                    <li><strong>Physical Layer:</strong> 802.11g WiFi with 54 Mbps data rate.</li>
-                    <li><strong>Communication:</strong> CBR (Constant Bit Rate) traffic: 10 flows, 512-byte packets, 5
-                        packets/second.</li>
-                    <li><strong>Simulation Duration:</strong> 300 seconds.</li>
-                    <li><strong>Q-Learning Parameters:</strong> Learning rate α = 0.1, discount factor γ = 0.95, ε = 0.1
-                        (decaying).</li>
-                    <li><strong>Comparison Protocols:</strong> OLSR (proactive), AODV (reactive), QBR (learning-based).
-                    </li>
-                    <li><strong>Evaluation Metrics:</strong> PDR (Packet Delivery Ratio), Average Latency (Mean
-                        end-to-end delay), Throughput.</li>
-                </ul>
-                <p>Performance is recorded every 1 second, and results are aggregated for statistical analysis.</p>
-            </div> -->
 
             <div class="text-block" id="results">
                 <h2 class="section-title">4. Results and Analysis</h2>
-                <p>From the NS-3 simulation setup, the QBR protocol achieves a higher Packet Delivery Ratio (PDR) and
-                    lower average delay compared to both AODV and OLSR. As the number of nodes increases, QBR
-                    consistently demonstrates better performance, maintaining more stable and efficient routing under
-                    higher network density.</p>
+                <h3>Reliability — Packet Delivery Ratio</h3>
+                <p>QBR maintains PDR values predominantly within the range of approximately 0.88 to 0.96 across the
+                    simulation duration, whereas OLSR fluctuates between 0.72 and 0.88, and AODV ranges between 0.60
+                    and 0.79. QBR exhibits a smoother trajectory with limited fluctuations, demonstrating that the
+                    QR-DQN model effectively stabilizes routing decisions over time by anticipating link degradation
+                    rather than reacting to failures after they occur.</p>
+
+                <h3>Latency — End-to-End Delay</h3>
+                <p>Following the initial convergence phase, QBR stabilizes and maintains delay values in the range of
+                    approximately 0.0023–0.0024 seconds, consistently performing better than OLSR and comparably to
+                    AODV after stabilization. The predictive nature of QR-DQN reduces retransmissions and route
+                    rediscovery overhead, which are major contributors to delay in conventional protocols.</p>
+
+                <h3>Scalability under Increasing Node Density</h3>
+                <p>QBR demonstrates a monotonic upward trend in PDR as node density increases, effectively leveraging
+                    greater path diversity through intelligent routing decisions. In contrast, both OLSR and AODV
+                    exhibit downward trends, with AODV performing worst at higher densities due to frequent route
+                    discovery overhead and link breakages. The performance gap between QBR and baseline protocols
+                    widens as the number of nodes increases, confirming scalability advantages.</p>
+
+                <h3>Trust-Aware Routing under Adversarial Conditions</h3>
+                <p>In the presence of malicious nodes, OLSR experiences noticeable degradation in PDR and increased
+                    delay due to its inability to differentiate cooperative from non-cooperative nodes. QBR maintains
+                    relatively stable performance by integrating trust into both the state representation and reward
+                    function, ensuring routing decisions inherently penalize nodes with declining trust scores. The
+                    system exhibits self-correcting behavior where malicious nodes are progressively isolated without
+                    explicit blacklisting.</p>
                 <div
                     style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-top: 40px;">
                     <div style="text-align: center;">
@@ -609,22 +613,38 @@
                             onmouseover="this.style.transform='scale(1.02)'"
                             onmouseout="this.style.transform='scale(1)'">
                     </div>
+                    <div style="text-align: center;">
+                        <img src="./images/r_5.JPG" alt="Result 4"
+                            style="width: 200%; border-radius: 16px; box-shadow: 0 10px 25px rgba(109, 165, 227, 0.15); border: 5px solid white; transition: transform 0.3s ease;"
+                            onmouseover="this.style.transform='scale(1.02)'"
+                            onmouseout="this.style.transform='scale(1)'">
+                    </div>
                 </div>
             </div>
 
             <div class="text-block" id="conclusion">
                 <h2 class="section-title">5. Conclusion</h2>
-                <p>This work demonstrates that reinforcement learning-based routing can effectively address limitations
-                    of traditional routing protocols in dynamic wireless networks. QBR leverages Q-Learning and Quantile
-                    Regression to learn adaptive routing policies that improve Packet Delivery Ratio and throughput
-                    compared to OLSR and AODV. The experimental evaluation confirms that the protocol rapidly converges
-                    to optimal routing decisions as network conditions evolve. However, scalability to larger networks,
-                    computational overhead, and Q-Table memory requirements merit further investigation. Future work
-                    should explore hierarchical Q-Learning for large-scale networks, integration of multi-agent
-                    reinforcement learning for cooperative routing, and deployment on real wireless testbeds to validate
-                    simulation findings. The results suggest that machine learning approaches offer promising avenues
-                    for developing more intelligent and adaptive routing protocols in next-generation wireless networks.
-                </p>
+                <p>This paper presented QBR, a unified predictive link stability and trust-aware routing framework for
+                    FANETs, integrating cross-layer link metrics, a composite trust model, and distributional
+                    reinforcement learning via Quantile Regression Deep Q-Network. By transitioning from reactive
+                    routing to an adaptive, uncertainty-aware decision-making paradigm, the proposed framework jointly
+                    optimizes link quality and node reliability within a single cohesive architecture.</p>
+                <p>Simulation results confirmed consistent improvements over baseline protocols across all evaluated
+                    performance dimensions. QBR achieved higher Packet Delivery Ratio, faster latency convergence, and
+                    more stable delay performance compared to both OLSR and AODV. Scalability analysis demonstrated
+                    that QBR effectively leverages increased network density through intelligent routing decisions,
+                    while threshold-based trust filtering enabled reliable isolation of malicious nodes without explicit
+                    blacklisting, reflecting a self-correcting routing behavior that conventional protocols lack.
+                    Control overhead optimizations, including MPR refinement, message piggybacking, and HELLO
+                    suppression, ensured that these gains were achieved without disproportionate communication costs.</p>
+                <p>It is important to acknowledge that all evaluations were conducted under the Gauss–Markov mobility
+                    model within a controlled simulation environment, and results should be interpreted carefully when
+                    generalizing to real-world deployments involving hardware constraints, channel fading, and
+                    heterogeneous node behavior. Future work will focus on validating the framework under diverse
+                    mobility patterns and on physical UAV platforms, automating trust parameter tuning through adaptive
+                    learning techniques, and strengthening resilience against collusion-based adversarial behaviors.
+                    These directions collectively represent the pathway toward practical, secure, and reliable FANET
+                    communication for next-generation autonomous UAV applications.</p>
             </div>
         </section>
 
